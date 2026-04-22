@@ -36,8 +36,9 @@ Hum `AGENTIFY_SPEC.md` §22 ke 12-week roadmap follow kar rahe hain.
    - Repo already existed at `d:\Abdullah Naseem\Agentify-Orchestration-Platform`
    - GitHub remote: `https://github.com/AbdullahNaseemAbbasi/Agentify-Orchestration-Platform.git`
    - `AGENTIFY_SPEC.md` (2240 lines) already provided by user
-   - Created `CLAUDE.md` — working methodology for this repo
+   - Created `PROJECT.md` (originally created as `CLAUDE.md`, Abdullah renamed it) — working methodology for this repo. **NOT auto-loaded** — Abdullah will point Claude to it manually each session.
    - Created `PROGRESS.md` (this file)
+   - First commit pushed to GitHub: `35cd2ed Updates_"Initial Project searching analyzing and Planning"` (not Conventional Commits format — Abdullah aware, will follow format going forward)
 
 2. **Big-picture overview delivered (no code, pure concept):**
    - Chapter 1: LLM kya hai — baseline
@@ -91,16 +92,13 @@ Say something like:
 ## 🔖 Commits So Far
 
 Target: 200+ atomic commits.
-Current: **0 commits** (all files untracked as of this writing).
+Current: **1 commit** pushed to GitHub.
 
-Suggested first commits (to propose at start of next session):
-```
-docs: add AGENTIFY_SPEC.md (complete technical specification)
-docs: add CLAUDE.md (working methodology for this repo)
-docs: add PROGRESS.md (learning journey tracker)
-```
+| # | SHA | Message | Notes |
+|---|-----|---------|-------|
+| 1 | 35cd2ed | `Updates_"Initial Project searching analyzing and Planning"` | Not Conventional Commits format. Added AGENTIFY_SPEC.md + PROJECT.md + PROGRESS.md. |
 
-Then push to GitHub so progress is visible and syncable across machines.
+**Going forward:** Follow Conventional Commits format (`docs:`, `feat:`, `fix:`, `chore:`, `refactor:`, `test:`) as documented in `PROJECT.md` §5.
 
 ---
 

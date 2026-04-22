@@ -1,6 +1,8 @@
-# CLAUDE.md — Agentify Project
+# PROJECT.md — Agentify Working Methodology
 
-> **Read this file completely before doing anything else in this repo.** It defines HOW we work here. The WHAT is in [`AGENTIFY_SPEC.md`](AGENTIFY_SPEC.md).
+> **IMPORTANT for Claude Code:** This file is named `PROJECT.md` (not `CLAUDE.md`), so it is **NOT auto-loaded** by Claude Code at session start. Abdullah will manually point you to it each session. When he does, READ IT COMPLETELY before doing anything else.
+>
+> This file defines HOW we work in this repo. The WHAT is in [`AGENTIFY_SPEC.md`](AGENTIFY_SPEC.md). Current session state is in [`PROGRESS.md`](PROGRESS.md).
 
 ---
 
@@ -156,9 +158,9 @@ Six commits for what a rushed developer would do in one. That's the point.
 
 ## 9. Session Startup Checklist
 
-When starting a fresh Claude session on this repo, in this **exact** order:
+When Abdullah points you to `PROJECT.md` at session start, do this in **exact** order:
 
-1. Read this file (`CLAUDE.md`) completely.
+1. Read this file (`PROJECT.md`) completely — you're doing that now.
 2. **Read [`PROGRESS.md`](PROGRESS.md) completely** — it tells you exactly where Abdullah was last time, what he understood, what gaps remain, and what to do next. This is the authoritative session-state document.
 3. Check `memory/MEMORY.md` (if available on this machine) for any accumulated context.
 4. Run `git log --oneline -20` to see what's been done.
@@ -167,6 +169,8 @@ When starting a fresh Claude session on this repo, in this **exact** order:
 7. Only THEN propose concept / next step.
 
 **At the END of every session:** update `PROGRESS.md` per its "Update Protocol" section, commit it (`docs: update PROGRESS.md after session N`), and push.
+
+**If Abdullah opens a fresh session and does NOT point you to PROJECT.md:** gently remind him — *"Abdullah, PROJECT.md padh lun pehle? Us mein working methodology hai."* Never start work without loading it.
 
 ---
 
