@@ -56,7 +56,7 @@ Hum `AGENTIFY_SPEC.md` §22 ke 12-week roadmap follow kar rahe hain.
 | Concept | Grip | Notes |
 |---------|------|-------|
 | LLM vs Agent | ~70% | Got "Tools" part right. Confused OpenAI/Gemini as "agents" — clarified they are LLM **providers**, agents are built on top. |
-| **Workspace & multi-tenancy** | ~30% | ⚠️ **NEEDS REVISIT.** Thought it's for "user registration". Missed the multi-tenancy / data isolation point. Re-explained with Gmail analogy and `WHERE workspaceId = X` enforcement. Still not fully solid. |
+| **Workspace & multi-tenancy** | ~30% → **~90%** ✅ | Re-taught Session 2 start with code-level example (2 companies, 1 DB, `workspaceId` filter). Quiz answered correctly: understood unique workspace_id per company, explicit filtering in code, data leak as worst-case. Solid. |
 | Reasoning Loop | ~90% | Solid. Added `maxSteps` safety concept. |
 
 ### Clarified This Session
