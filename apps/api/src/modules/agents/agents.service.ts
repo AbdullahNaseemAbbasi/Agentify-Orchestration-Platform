@@ -1,5 +1,10 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
-import { Agent, Prisma } from '@prisma/client';
+import {
+  ConflictException,
+  Injectable,
+  Logger,
+  NotFoundException,
+} from '@nestjs/common';
+import { Agent, Prisma, Tool } from '@prisma/client';
 import { PrismaService } from '@agentify/database';
 import { CreateAgentDto } from './dto/create-agent.dto';
 import { UpdateAgentDto } from './dto/update-agent.dto';
@@ -69,5 +74,54 @@ export class AgentsService {
       data: { deletedAt: new Date() },
     });
     this.logger.log(`Soft-deleted agent ${id}`);
+  }
+
+  // ----------------------------------------------
+  // Agent-Tool attachments
+  // ----------------------------------------------
+
+  async listTools(workspaceId: string, agentId: string): Promise<Tool[]> {
+    await this.findById(workspaceId, agentId);
+    const rows = await this.prisma.agentTool.findMany({
+      where: { agentId },
+      include: { tool: true },
+      orderBy: { createdAt: 'asc' },
+    });
+    return rows.map((r) => r.tool);
+  }
+
+  async attachTool(workspaceId: string, agentId: string, toolId: string): Promise<Tool> {
+    await this.findById(workspaceId, agentId);
+
+    const tool = await this.prisma.tool.findFirst({
+      where: { id: toolId, workspaceId },
+    });
+    if (!tool) {
+      throw new NotFoundException('Tool not found in this workspace');
+    }
+
+    try {
+      await this.prisma.agentTool.create({ data: { agentId, toolId } });
+    } catch (err) {
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+        throw new ConflictException('Tool already attached to this agent');
+      }
+      throw err;
+    }
+
+    this.logger.log(`Attached tool ${toolId} to agent ${agentId}`);
+    return tool;
+  }
+
+  async detachTool(workspaceId: string, agentId: string, toolId: string): Promise<void> {
+    await this.findById(workspaceId, agentId);
+
+    const result = await this.prisma.agentTool.deleteMany({
+      where: { agentId, toolId },
+    });
+    if (result.count === 0) {
+      throw new NotFoundException('Tool was not attached to this agent');
+    }
+    this.logger.log(`Detached tool ${toolId} from agent ${agentId}`);
   }
 }
