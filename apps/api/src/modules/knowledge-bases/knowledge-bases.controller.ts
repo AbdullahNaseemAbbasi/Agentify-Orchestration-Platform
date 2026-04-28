@@ -18,13 +18,18 @@ import { RolesGuard } from '../../common/guards/roles.guard';
 import { WorkspaceContext, WorkspaceGuard } from '../../common/guards/workspace.guard';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CreateKnowledgeBaseDto } from './dto/create-knowledge-base.dto';
+import { SearchDto } from './dto/search.dto';
 import { UpdateKnowledgeBaseDto } from './dto/update-knowledge-base.dto';
 import { KnowledgeBasesService } from './knowledge-bases.service';
+import { SearchHit, SearchService } from './search.service';
 
 @Controller('knowledge-bases')
 @UseGuards(JwtAuthGuard, WorkspaceGuard, RolesGuard)
 export class KnowledgeBasesController {
-  constructor(private readonly kbService: KnowledgeBasesService) {}
+  constructor(
+    private readonly kbService: KnowledgeBasesService,
+    private readonly searchService: SearchService,
+  ) {}
 
   @Get()
   findAll(@CurrentWorkspace() ws: WorkspaceContext): Promise<KnowledgeBase[]> {
@@ -67,5 +72,23 @@ export class KnowledgeBasesController {
     @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
   ): Promise<void> {
     await this.kbService.delete(ws.id, id);
+  }
+
+  // ----- Vector search -----
+
+  @Post(':id/search')
+  @HttpCode(HttpStatus.OK)
+  search(
+    @CurrentWorkspace() ws: WorkspaceContext,
+    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
+    @Body() dto: SearchDto,
+  ): Promise<SearchHit[]> {
+    return this.searchService.searchSimilar(
+      ws.id,
+      id,
+      dto.query,
+      dto.topK,
+      dto.minSimilarity,
+    );
   }
 }
