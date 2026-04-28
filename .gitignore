@@ -1,0 +1,96 @@
+# ============================================
+# Dependencies
+# ============================================
+node_modules/
+jspm_packages/
+.pnp/
+.pnp.js
+.yarn/
+!.yarn/patches
+!.yarn/plugins
+!.yarn/releases
+!.yarn/sdks
+!.yarn/versions
+
+# ============================================
+# Build outputs
+# ============================================
+dist/
+build/
+out/
+*.tsbuildinfo
+.tsc-cache/
+
+# ============================================
+# Secrets & environment (NEVER COMMIT)
+# ============================================
+.env
+.env.local
+.env.development
+.env.production
+.env.test
+.env.*.local
+
+# ============================================
+# Logs
+# ============================================
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# ============================================
+# Testing & coverage
+# ============================================
+coverage/
+.nyc_output/
+*.lcov
+.jest-cache/
+
+# ============================================
+# IDE / Editor files
+# ============================================
+.vscode/
+.idea/
+*.swp
+*.swo
+*.suo
+*.sublime-project
+*.sublime-workspace
+.history/
+
+# ============================================
+# OS files
+# ============================================
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+desktop.ini
+
+# ============================================
+# Prisma generated artifacts
+# ============================================
+libs/database/prisma/generated/
+
+# ============================================
+# Docker
+# ============================================
+.docker/
+docker-compose.override.yml
+
+# ============================================
+# Temp / cache
+# ============================================
+.tmp/
+.cache/
+.parcel-cache/
+.next/
+.nuxt/
+.turbo/
