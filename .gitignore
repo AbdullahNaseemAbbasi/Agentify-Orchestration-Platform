@@ -61,6 +61,7 @@ coverage/
 *.sublime-project
 *.sublime-workspace
 .history/
+.claude/
 
 # ============================================
 # OS files
