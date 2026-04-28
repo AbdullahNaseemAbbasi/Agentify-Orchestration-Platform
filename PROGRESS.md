@@ -6,7 +6,7 @@
 
 ## 📅 Last Updated
 
-**2026-04-29** — End of Session 15 (Week 7-8 Phase C — RunsService reasoning loop live)
+**2026-04-29** — End of Session 16 (**WEEK 7-8 COMPLETE** — Conversational AI live via HTTP)
 
 ---
 
@@ -22,12 +22,8 @@ Hum `AGENTIFY_SPEC.md` §22 ke 12-week roadmap follow kar rahe hain.
 | **Week 3**     | Auth & Users (signup, login, JWT, refresh, RBAC)       | ✅ **DONE** — Phases A+B+C+D live and verified end-to-end with multi-user curl scenarios |
 | **Week 4**     | Agents & Tools                                          | ✅ **DONE** — schema migrated, Agents+Tools+attachments CRUD live and verified |
 | **Week 5–6**   | Knowledge Base & RAG                                    | ✅ **DONE** — full pipeline live: KB CRUD + documents + embeddings + worker + indexing + vector search verified end-to-end. Only multipart file upload deferred (text upload covers learning). |
-| **Week 7–8**   | Agent Runtime Engine                                    | 🟢 **MOSTLY DONE** — Phases A + B + C live (libs/llm + Thread/Message/Run schema + Threads/Messages + RunsService reasoning loop); only Phase D (sync run endpoint) pending |
-| Week 3         | Auth & Users                                           | ⬜ Pending                                                      |
-| Week 4         | Agents & Tools                                         | ⬜ Pending                                                      |
-| Week 5–6       | Knowledge Base & RAG                                   | ⬜ Pending                                                      |
-| Week 7–8       | Agent Runtime Engine                                   | ⬜ Pending                                                      |
-| Week 9         | Streaming & Async                                      | ⬜ Pending                                                      |
+| **Week 7–8**   | Agent Runtime Engine                                   | ✅ **DONE** — All 4 phases live: libs/llm, Thread/Message/Run schema, RunsService reasoning loop, sync POST /agents/:id/runs endpoint verified end-to-end |
+| **Week 9**     | Streaming & Async                                      | 🟡 **READY TO START** — needs SSE + BullMQ async runs |
 | Week 10        | Memory System                                          | ⬜ Pending                                                      |
 | Week 11        | Observability & Webhooks                               | ⬜ Pending                                                      |
 | Week 12        | Polish & Deployment                                    | ⬜ Pending                                                      |
