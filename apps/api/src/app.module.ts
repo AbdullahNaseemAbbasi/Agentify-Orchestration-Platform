@@ -6,6 +6,7 @@ import { AppService } from './app.service';
 import { HealthModule } from './health/health.module';
 import { AgentsModule } from './modules/agents/agents.module';
 import { AuthModule } from './modules/auth/auth.module';
+import { KnowledgeBasesModule } from './modules/knowledge-bases/knowledge-bases.module';
 import { ToolsModule } from './modules/tools/tools.module';
 import { UsersModule } from './modules/users/users.module';
 import { WorkspacesModule } from './modules/workspaces/workspaces.module';
@@ -20,6 +21,7 @@ import { WorkspacesModule } from './modules/workspaces/workspaces.module';
     WorkspacesModule,
     AgentsModule,
     ToolsModule,
+    KnowledgeBasesModule,
   ],
   controllers: [AppController],
   providers: [AppService],
