@@ -5,12 +5,14 @@ import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { HealthModule } from './health/health.module';
 import { EmbeddingsModule } from '@agentify/embeddings';
+import { LlmModule } from '@agentify/llm';
 import { QueueModule } from '@agentify/queue';
 import { AgentsModule } from './modules/agents/agents.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { DocumentsModule } from './modules/documents/documents.module';
 import { KnowledgeBasesModule } from './modules/knowledge-bases/knowledge-bases.module';
 import { MessagesModule } from './modules/messages/messages.module';
+import { RunsModule } from './modules/runs/runs.module';
 import { ThreadsModule } from './modules/threads/threads.module';
 import { ToolsModule } from './modules/tools/tools.module';
 import { UsersModule } from './modules/users/users.module';
@@ -21,6 +23,7 @@ import { WorkspacesModule } from './modules/workspaces/workspaces.module';
     ConfigModule.forRoot({ isGlobal: true, cache: true }),
     DatabaseModule,
     EmbeddingsModule,
+    LlmModule,
     QueueModule.forRoot(),
     HealthModule,
     UsersModule,
@@ -32,6 +35,7 @@ import { WorkspacesModule } from './modules/workspaces/workspaces.module';
     DocumentsModule,
     ThreadsModule,
     MessagesModule,
+    RunsModule,
   ],
   controllers: [AppController],
   providers: [AppService],

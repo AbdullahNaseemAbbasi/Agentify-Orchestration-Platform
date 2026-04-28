@@ -89,11 +89,17 @@ export class HttpToolExecutor {
   // ----------------------------------------------
 
   private interpolate(template: string, args: Record<string, unknown>): string {
-    return template.replace(/\{\{\s*([\w.]+)\s*\}\}/g, (_match, key) => {
-      const value = key.split('.').reduce<unknown>((acc, k) => {
-        if (acc && typeof acc === 'object') return (acc as Record<string, unknown>)[k];
-        return undefined;
-      }, args);
+    return template.replace(/\{\{\s*([\w.]+)\s*\}\}/g, (_match: string, key: string) => {
+      const parts: string[] = key.split('.');
+      let value: unknown = args;
+      for (const k of parts) {
+        if (value && typeof value === 'object') {
+          value = (value as Record<string, unknown>)[k];
+        } else {
+          value = undefined;
+          break;
+        }
+      }
       return value === undefined || value === null ? '' : String(value);
     });
   }
