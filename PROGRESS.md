@@ -6,7 +6,7 @@
 
 ## 📅 Last Updated
 
-**2026-04-29** — End of Session 3
+**2026-04-29** — End of Session 4 (continued same day)
 
 ---
 
@@ -18,7 +18,8 @@ Hum `AGENTIFY_SPEC.md` §22 ke 12-week roadmap follow kar rahe hain.
 | -------------- | ------------------------------------------------------ | --------------------------------------------------------------- |
 | **Pre-Week 1** | Project-level conceptual overview                      | ✅ Done (Ch 1–7 + workspace refresh + NestJS/TS intro)          |
 | **Week 1**     | Foundation: NestJS monorepo + Hello World API          | ✅ Done (skeleton running, lint+format, Docker stack live)     |
-| **Week 2**     | Prisma + database lib + first migration                | 🟡 **IN PROGRESS** (Docker infra ready, Prisma is next)        |
+| **Week 2**     | Prisma + database lib + first migration + /health/db   | ✅ Done (4 tables migrated, pgvector active, DB health green) |
+| **Week 3**     | Auth & Users (signup, login, JWT, refresh, RBAC)       | 🟡 **IN PROGRESS** (schema ready, modules to build)           |
 | Week 3         | Auth & Users                                           | ⬜ Pending                                                      |
 | Week 4         | Agents & Tools                                         | ⬜ Pending                                                      |
 | Week 5–6       | Knowledge Base & RAG                                   | ⬜ Pending                                                      |
@@ -214,63 +215,161 @@ e26a2a0 chore: add .prettierrc with TypeScript-friendly defaults
 
 ---
 
+---
+
+## 📚 Session 4 Log (2026-04-29 — same day continuation)
+
+### Kya Hua
+
+1. **Prisma + database lib (libs/database):**
+   - Installed `@prisma/client` (runtime) + `prisma` (dev) at v5.22
+   - Added 4 npm scripts: `prisma:generate`, `prisma:migrate`, `prisma:migrate:deploy`, `prisma:studio` (all pointing to `libs/database/prisma/schema.prisma`)
+   - Scaffolded `libs/database/` as a workspace package: `package.json` (`@agentify/database`), `tsconfig.lib.json`, folder structure
+
+2. **First Prisma schema** (smallest meaningful subset of spec §6):
+   - `User`, `RefreshToken`, `Workspace`, `WorkspaceMember`
+   - Enums: `Plan` (FREE/PRO/ENTERPRISE), `Role` (OWNER/ADMIN/MEMBER/VIEWER)
+   - pgvector via `previewFeatures = ["postgresqlExtensions"]` and `extensions = [vector]`
+   - Soft-delete pattern (`deletedAt`) + cascade deletes on relations
+
+3. **First migration applied:**
+   - **Gotcha:** `prisma migrate dev` is interactive and refuses to run in non-interactive shells. Workaround used: `prisma migrate diff --from-empty --to-schema-datamodel ... --script` to generate SQL, saved to `migrations/20260429000000_init/migration.sql`, then `prisma migrate deploy` applied it.
+   - Manually created `migration_lock.toml` (provider = postgresql) since `migrate deploy` doesn't generate it.
+   - **Verified live:** 5 tables (`users`, `workspaces`, `workspace_members`, `refresh_tokens`, `_prisma_migrations`) + 2 enums + pgvector 0.8.2 active.
+   - Prisma Client v5.22 generated — TypeScript types now available app-wide.
+
+4. **PrismaService + DatabaseModule:**
+   - `PrismaService` extends `PrismaClient`, implements `OnModuleInit` (eager `$connect()`) and `OnModuleDestroy` (graceful `$disconnect()`).
+   - `DatabaseModule` marked `@Global()` so PrismaService is shared across the app without re-importing.
+   - Barrel export from `libs/database/src/index.ts`.
+
+5. **HealthModule:**
+   - `GET /health` (liveness): returns `{ status: 'ok' }`. No DB hit — for app-process aliveness.
+   - `GET /health/db` (readiness): runs `SELECT 1` via PrismaService, reports status + latency, catches errors.
+   - Wired into `AppModule` alongside `DatabaseModule`.
+
+6. **🎉 End-to-end verified live:**
+   ```
+   GET /          → "Hello from Agentify API!"
+   GET /health    → {"status":"ok"}
+   GET /health/db → {"status":"ok","latencyMs":15}
+   ```
+   Boot logs show `[PrismaService] Prisma connected to database` confirming lifecycle hook fired.
+
+### Concepts Locked This Session
+
+- ✅ ORM kya hai aur kyun (raw SQL ke problems)
+- ✅ Prisma vs alternatives (TypeORM, Sequelize, Knex)
+- ✅ Schema-first approach + Prisma Client codegen
+- ✅ `schema.prisma` syntax: model, enum, `@id`, `@unique`, `@default`, `@relation`, `@@map`, `@@index`, `@@unique`
+- ✅ Soft-delete pattern (`deletedAt`)
+- ✅ Cascade deletes (`onDelete: Cascade`)
+- ✅ Postgres extensions in Prisma (`extensions = [vector]`)
+- ✅ NestJS `@Global()` modules pattern
+- ✅ `OnModuleInit` / `OnModuleDestroy` lifecycle interfaces
+- ✅ `extends PrismaClient` inheritance trick
+- ✅ Barrel export pattern (`index.ts` re-exports)
+- ✅ Liveness vs Readiness health checks (Kubernetes pattern)
+- ✅ Prisma `$queryRaw` tagged template (parameterized raw SQL)
+
+### Gotchas Captured (for future Claude)
+
+- **`prisma migrate dev` is interactive** — won't work from non-interactive shells. Use `prisma migrate diff` + `prisma migrate deploy` workflow when running from agents/CI.
+- **Manually create `migration_lock.toml`** if you bypass `migrate dev` (it normally creates the lockfile for you).
+- **Path aliases work transparently** — `import { PrismaService } from '@agentify/database'` resolves via root `tsconfig.json` `paths` config; no extra setup needed in apps.
+- **Port 3000 was busy mid-session, then 3001 too** — used 3002 for the verification run. Abdullah may have stale node processes. Document expectation: port may shift.
+
+### Commits Made This Session (~9 atomic commits)
+
+```
+feat(api): add HealthModule with /health and /health/db endpoints
+feat(api): wire DatabaseModule into AppModule
+feat(database): add global DatabaseModule and barrel export
+feat(database): add PrismaService extending PrismaClient
+chore(database): add migration_lock.toml pinning provider to postgresql
+feat(database): add init migration with pgvector and core tables
+feat(database): add initial Prisma schema with User, Workspace, RefreshToken
+chore(database): scaffold libs/database workspace package
+chore: add Prisma 5 ORM with helper scripts
+```
+
+(Hashes may differ from origin if Abdullah edits via GitHub web UI between commits.)
+
+---
+
 ## 🎬 Next Session — Resume Point
 
 **Where we left off:** Abdullah ne quiz ke answers diye, feedback mila, "Acme" ka meaning clarified. User ne ghar jaane se pehle CLAUDE.md + PROGRESS.md update karne ko kaha hai.
 
-**Where we left off (end of Session 3):** Foundation complete. NestJS Hello World running, lint/format clean, Docker stack live with Postgres+pgvector, Redis, MinIO all healthy. Next phase = wire Prisma into the app and create the first DB schema.
+**Where we left off (end of Session 4):** Full DB stack working end-to-end. Prisma migrated 4 core tables + pgvector. PrismaService + DatabaseModule (Global) wired into AppModule. `/health/db` returns `{"status":"ok","latencyMs":15}` — proves entire chain (HTTP → controller → service → Prisma → Postgres → result) is alive. Next phase = Auth (Week 3 in spec).
 
-### Next concrete steps (in order)
+### Next concrete steps (in order, Week 3 — Auth & Users)
 
-1. **Prisma + database lib (`libs/database`)** — the big one:
-   - Mini-concept: ORM kya hai, Prisma kyun chuna (vs TypeORM/Sequelize/raw SQL)
-   - Install `prisma` (dev) + `@prisma/client` (runtime)
-   - Create `libs/database/prisma/schema.prisma` — start with smallest meaningful subset from spec §6: `User`, `Workspace`, `WorkspaceMember`, `RefreshToken`. Postpone larger entities (Agent, Tool, etc.) until their own week.
-   - Run first migration: `npx prisma migrate dev --name init`
-   - Verify pgvector extension via raw SQL migration (`CREATE EXTENSION IF NOT EXISTS vector`)
-   - Create `libs/database/src/prisma.service.ts` extending `PrismaClient` with NestJS `OnModuleInit` / `OnModuleDestroy` lifecycle hooks
-   - Create `libs/database/src/database.module.ts` exporting `PrismaService` as a global module
-   - Wire `DatabaseModule` into `AppModule`
-   - Add a `/health/db` endpoint that runs `SELECT 1` to verify connectivity end-to-end
-   - Concept review: Prisma migrations, generated client, type-safe queries
+Spec §7 + §8.1 are the references. Build in this order:
 
-2. **`@agentify/common` lib skeleton** (small):
-   - `libs/common/src/index.ts` barrel file
-   - Placeholders for future utilities (pagination, error classes, crypto helpers)
-   - Verify path alias `@agentify/common` works in api app via test import
+1. **Auth foundation utilities (`libs/common` first):**
+   - Scaffold `libs/common` workspace package (similar to `libs/database`)
+   - Add password hashing utility using `argon2id` (spec §19.1)
+   - Add JWT signing/verification helpers using RS256 (spec §7.1) — generate keypair via `openssl genrsa -out jwt-private.pem 4096` + `openssl rsa -pubout`
+   - Add `scripts/generate-jwt-keys.ts` for one-time keypair generation
 
-3. **Auth foundation prep** (before Week 3):
-   - `.env` file actually created locally with real values
-   - JWT key generation script (`scripts/generate-jwt-keys.ts`)
-   - Sketch out `AuthModule` shape (controllers, service, guards) — code in Week 3
+2. **Users module (`apps/api/src/modules/users`)**:
+   - DTOs: `CreateUserDto`, `UpdateUserDto`
+   - `UsersService`: `findById`, `findByEmail`, `create`, `update` — all using PrismaService
+   - `UsersController`: GET /users/me (authenticated), PATCH /users/me
+   - Unit tests with mocked PrismaService
+
+3. **Auth module (`apps/api/src/modules/auth`)**:
+   - DTOs: `SignupDto`, `LoginDto`, `RefreshDto`
+   - `AuthService`: signup, login, refresh, logout
+   - JWT + refresh token storage in DB (RefreshToken model already in schema)
+   - `AuthController`: POST /auth/signup, /auth/login, /auth/refresh, /auth/logout
+   - `JwtAuthGuard` with passport-jwt strategy
+   - `@CurrentUser()` decorator that extracts user from JWT
+   - On signup: create User + default Workspace + WorkspaceMember(OWNER) — atomic transaction
+
+4. **Workspaces module skeleton:**
+   - `WorkspacesService` and `WorkspacesController` for CRUD
+   - `@CurrentWorkspace()` decorator
+   - `WorkspaceContext` interface
+   - Multi-tenancy enforcement: every query MUST include `workspaceId`
+
+5. **Roles & RBAC:**
+   - `@Roles(...)` decorator
+   - `RolesGuard` checks JWT payload for membership role
+   - Role table from spec §7.4 enforced on routes
 
 ### Suggested opening message for next session
 
-> "Salam Abdullah! Pichli session mein Docker stack live ho gaya tha — Postgres+pgvector, Redis, MinIO sab healthy. Aaj Prisma setup karte hain — yeh concept-heavy hai (ORM kya hai, schema-first approach, migrations). Pehle 10-min concept, phir step-by-step implementation, end mein ek `/health/db` endpoint banayenge jo actually DB se connect karke verify kare. Ready?"
+> "Salam Abdullah! Pichli session mein Prisma fully wired ho gaya — `/health/db` se DB connectivity verified. Aaj Week 3 start karenge — Authentication. Yeh thora bara hissa hai (signup, login, JWT, refresh tokens, RBAC). Pehle `libs/common` mein password hashing aur JWT helpers banayenge, phir UsersModule, phir AuthModule. End mein full signup → login → refresh flow chal raha hoga. Ready?"
 
 ### ⚠️ Reminders for Future Claude
 
-- **Never run `git push`** — only commits, Abdullah pushes himself. (See `feedback_never_push.md`.)
-- **Never use `nest new` or `prisma init` CLI without explanation** — manual file-by-file is the rule.
-- **Postgres is on host port 5433 (NOT 5432)**. Redis on 6381 (NOT 6379). DATABASE_URL in `.env.example` already correct. **Do not "fix" these ports back to defaults — Abdullah has nexora-postgres on 5432.**
-- **Postgres credentials** (local dev): user `agentify`, password `password`, db `agentify`.
-- **pgvector 0.8.2 verified working** — when writing schema, can use `Unsupported("vector(1536)")` pattern from spec §6.
-- **NestJS API on port 3000** (was free in Session 3 — port 3000 occupant from Session 2 is gone).
-- **Abdullah may edit on GitHub web UI between sessions** — commit hashes churn; substance is what matters.
-- **Docker Compose path:** always use `-f docker-compose.dev.yml` flag (not the default `docker-compose.yml`).
+- **Never run `git push`** — only commits, Abdullah pushes himself.
+- **Never use scaffolding CLIs** (`nest new`, `prisma init`, etc.) without first explaining what they would do.
+- **Postgres on host port 5433** (NOT 5432); Redis on **6381** (NOT 6379). Don't "fix" back to defaults.
+- **Postgres credentials** (local dev): user `agentify`, password `password`, db `agentify`. Schema = `public`.
+- **pgvector 0.8.2 active** — when adding embeddings, use `Unsupported("vector(1536)")` per spec §6.
+- **`prisma migrate dev` is interactive — does NOT work in agent shells.** Use this workflow instead:
+  1. `npx prisma migrate diff --from-empty --to-schema-datamodel <schema> --script > migrations/<TIMESTAMP>_<name>/migration.sql`
+     (or `--from-migrations` for incremental)
+  2. `npm run prisma:migrate:deploy`
+  3. Ensure `migration_lock.toml` exists (provider = postgresql)
+- **`@agentify/database` path alias works** transparently in `apps/api` (tsconfig paths).
+- **Server port 3000/3001 often busy on Abdullah's machine.** Use `PORT=3002` (or higher) for verification runs. Document the port used in PROGRESS update.
+- **Docker Compose path:** always use `-f docker-compose.dev.yml` flag.
+- **Abdullah edits via GitHub web UI between sessions** — commit hashes churn, substance is what matters.
 
 ---
 
 ## 🔖 Commits So Far
 
 Target: 200+ atomic commits.
-Current: **~23 commits locally** (push status owned by Abdullah).
+Current: **~32 commits locally** (push status owned by Abdullah).
 
-Session 1 (3 user-made bulk commits) +
-Session 2 (12 atomic commits) +
-Session 3 (8 atomic commits).
+Session 1 (3 bulk commits) + Session 2 (12 atomic) + Session 3 (8 atomic) + Session 4 (~9 atomic).
 
-Health: ~12% of the way to 200+ goal after 3 sessions. On track.
+Health: ~16% of the way to 200+ goal after 4 sessions across 2 calendar days. On track for 12-week MVP.
 
 ---
 
