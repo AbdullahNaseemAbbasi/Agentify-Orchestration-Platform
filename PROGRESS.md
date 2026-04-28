@@ -6,7 +6,7 @@
 
 ## 📅 Last Updated
 
-**2026-04-29** — End of Session 5 (Phase A of Week 3 Auth foundation done)
+**2026-04-29** — End of Session 6 (Phase B of Week 3 — Users module live)
 
 ---
 
@@ -19,7 +19,7 @@ Hum `AGENTIFY_SPEC.md` §22 ke 12-week roadmap follow kar rahe hain.
 | **Pre-Week 1** | Project-level conceptual overview                      | ✅ Done (Ch 1–7 + workspace refresh + NestJS/TS intro)          |
 | **Week 1**     | Foundation: NestJS monorepo + Hello World API          | ✅ Done (skeleton running, lint+format, Docker stack live)     |
 | **Week 2**     | Prisma + database lib + first migration + /health/db   | ✅ Done (4 tables migrated, pgvector active, DB health green) |
-| **Week 3**     | Auth & Users (signup, login, JWT, refresh, RBAC)       | 🟡 **IN PROGRESS** — Phase A done (utils + keys); Phase B (Users), C (Auth), D (RBAC) pending |
+| **Week 3**     | Auth & Users (signup, login, JWT, refresh, RBAC)       | 🟡 **IN PROGRESS** — Phases A + B done (utils, keys, UsersModule); Phase C (Auth flows), D (Workspaces+RBAC) pending |
 | Week 3         | Auth & Users                                           | ⬜ Pending                                                      |
 | Week 4         | Agents & Tools                                         | ⬜ Pending                                                      |
 | Week 5–6       | Knowledge Base & RAG                                   | ⬜ Pending                                                      |
@@ -354,44 +354,103 @@ chore(common): scaffold libs/common workspace package
 
 ---
 
+---
+
+## 📚 Session 6 Log (2026-04-29 — Phase B of Week 3)
+
+### Kya Hua
+
+1. **`class-validator` + `class-transformer` installed** — NestJS standard for declarative DTO validation. Total 506 packages.
+
+2. **Global `ValidationPipe` wired** in `apps/api/src/main.ts` with strict settings:
+   - `whitelist: true` — strip undeclared fields
+   - `forbidNonWhitelisted: true` — 400 on extra fields
+   - `transform: true` — plain → DTO instance
+   - `enableImplicitConversion: true` — auto-cast query/path string params
+
+3. **`apps/api/src/modules/users/` created** with:
+   - `dto/create-user.dto.ts` — `@IsEmail`, `@MinLength(8)`, `@MaxLength` constraints + custom error messages
+   - `users.service.ts` — `findById`, `findByEmail` (lowercase, soft-delete aware), `findByIdOrThrow`, `create` (hashes via `@agentify/common`, double-checks unique email, catches Prisma P2002 as 409 ConflictException, logs success)
+   - `users.module.ts` — provides + exports UsersService (no controller yet)
+
+4. **AppModule** updated to import `UsersModule`.
+
+5. **🎉 Live sanity test passed** via a temporary `scripts/_scratch-create-user.ts` that bootstrapped a NestJS standalone context and:
+   - Created a real user in Postgres
+   - Verified `passwordHash` starts with `$argon2id$`
+   - `verifyPassword(correct)` returned true; `verifyPassword(wrong)` returned false
+   - Duplicate-email second create threw `ConflictException` as expected
+   - Cleaned up the test user. Scratch file deleted post-test.
+
+### Concepts Locked This Session
+
+- ✅ DTO pattern + class-validator decorators (`@IsEmail`, `@MinLength`, `@MaxLength`)
+- ✅ Custom error messages on validators
+- ✅ Definite assignment assertion (`!:`) in TypeScript
+- ✅ `ValidationPipe` global config + each option's purpose (whitelist / forbidNonWhitelisted / transform)
+- ✅ Soft-delete-aware queries (`where: { ..., deletedAt: null }`) with `findFirst` over `findUnique`
+- ✅ Case-insensitive email storage (`.toLowerCase()` everywhere)
+- ✅ Race-safe unique check (early lookup + `Prisma.PrismaClientKnownRequestError` `P2002` catch)
+- ✅ Path aliases working live: `@agentify/common` and `@agentify/database` imported in apps/api
+- ✅ NestJS standalone context (`createApplicationContext`) for test/script harnesses
+
+### Commits Made This Session (~5 atomic commits)
+
+```
+feat(users): add UsersModule and wire into AppModule
+feat(users): add UsersService with CRUD methods
+feat(users): add CreateUserDto with class-validator constraints
+feat(api): wire global ValidationPipe with strict DTO settings
+chore: add class-validator and class-transformer for DTO validation
+```
+
+---
+
 ## 🎬 Next Session — Resume Point
 
 **Where we left off:** Abdullah ne quiz ke answers diye, feedback mila, "Acme" ka meaning clarified. User ne ghar jaane se pehle CLAUDE.md + PROGRESS.md update karne ko kaha hai.
 
-**Where we left off (end of Session 5):** Phase A of Week 3 done. `libs/common` scaffolded with argon2id-based password util. RSA-4096 keypair generated and gitignored. `.env.example` documents JWT paths/algo/TTLs. Next = Phase B (Users module).
+**Where we left off (end of Session 6):** Phase B of Week 3 done. UsersModule live with class-validator DTO, race-safe `create()`, sanity-tested end-to-end (real user inserted in Postgres, password verified, duplicate rejected). Next = Phase C (Auth flows).
 
-### Next concrete steps (in order)
+### Next concrete steps (Phase C — Auth Module)
 
-**Phase B — Users Module (start of Session 6):**
+1. **Install Passport stack:**
+   - `@nestjs/jwt`, `@nestjs/passport`, `passport`, `passport-jwt`, `@types/passport-jwt`
 
-1. Install `class-validator` and `class-transformer` (NestJS standard for DTO validation)
-2. Wire `ValidationPipe` globally in `main.ts` (catches malformed bodies)
-3. Create `apps/api/src/modules/users/`:
-   - `dto/create-user.dto.ts` — email + password + name with validators (`@IsEmail`, `@MinLength`, etc.)
-   - `dto/update-user.dto.ts` — partial of create
-   - `users.service.ts` — `findById`, `findByEmail`, `create` (uses `hashPassword`), `update`
-   - `users.controller.ts` — minimal for now (real `/users/me` comes after JwtAuthGuard exists in Phase C)
-   - `users.module.ts`
-4. Wire `UsersModule` into `AppModule`
-5. Sanity-test by manually calling `POST /users` (or via Prisma Studio) and confirming hashed password in DB
+2. **Config service that reads RSA keys:**
+   - `apps/api/src/config/jwt.config.ts` — reads `JWT_PRIVATE_KEY_PATH` / `JWT_PUBLIC_KEY_PATH` and loads PEM contents via `fs.readFileSync` at module init
+   - Returns options for `JwtModule.registerAsync({ ... })`
 
-**Phase C — Auth Module (Session 7):**
-- Install `@nestjs/jwt`, `@nestjs/passport`, `passport`, `passport-jwt`, `@types/passport-jwt`
-- Create `JwtConfigService` that reads keys from `keys/*.pem` paths
-- `auth.service.ts`: signup (creates User + Workspace + Member atomically), login, refresh (token rotation), logout (revoke refresh)
-- `auth.controller.ts`: POST /auth/signup, /auth/login, /auth/refresh, /auth/logout
-- `JwtStrategy` + `JwtAuthGuard`
-- `@CurrentUser()` decorator
-- Update `/users/me` to be JWT-protected
+3. **Auth module structure (`apps/api/src/modules/auth/`):**
+   - `dto/signup.dto.ts`, `dto/login.dto.ts`, `dto/refresh.dto.ts`
+   - `auth.service.ts`:
+     - `signup(dto)` — creates User + default Workspace + WorkspaceMember(OWNER) in a Prisma transaction; returns user + access/refresh token pair
+     - `login(dto)` — looks up user, verifyPassword, issues tokens, persists refresh-token hash
+     - `refresh(dto)` — verifies signature, looks up tokenHash in DB (must exist + not revoked + not expired), rotates (revoke old, issue new pair)
+     - `logout(refreshToken)` — sets `revokedAt`
+   - `auth.controller.ts`: POST `/auth/signup`, `/auth/login`, `/auth/refresh`, `/auth/logout`
+   - `strategies/jwt.strategy.ts` — passport-jwt strategy reading public key
+   - `guards/jwt-auth.guard.ts`
+   - `decorators/current-user.decorator.ts` — extracts `req.user` from JWT payload
+   - `auth.module.ts`
 
-**Phase D — Workspaces + RBAC (Session 8):**
-- WorkspacesModule (CRUD)
+4. **Update users module:** add `UsersController` with JWT-protected `GET /users/me` endpoint (now possible since `JwtAuthGuard` exists).
+
+5. **Sanity-test full flow live:**
+   - `curl -X POST /auth/signup -d '{...}'` → returns access + refresh token
+   - `curl -H "Authorization: Bearer <access>" /users/me` → returns user
+   - `curl -X POST /auth/refresh -d '{"refresh_token": "..."}'` → new pair
+   - `curl -X POST /auth/logout` → 204; refresh token now revoked
+
+### Phase D plan (Session 8) — Workspaces + RBAC
+- `WorkspacesModule` for CRUD
 - `@CurrentWorkspace()` decorator + `WorkspaceContext`
 - `@Roles(OWNER, ADMIN, ...)` decorator + `RolesGuard`
+- All workspace-scoped service methods enforced
 
 ### Suggested opening message for next session
 
-> "Salam Abdullah! Phase A done — argon2 password hashing aur JWT keys ready hain. Aaj Phase B (Users module) shuru karte hain. Pehle class-validator install karenge, phir UsersModule banayenge — DTOs, service with hashPassword, controller. End mein DB mein actual hashed user banake verify karenge. Ready?"
+> "Salam Abdullah! Phase B done — UsersModule live, hashed user actually banaya. Aaj Phase C — Auth flows. JWT signing/verification, signup/login/refresh/logout endpoints, JwtAuthGuard. Yeh thora bara hissa hai (~10-12 commits) lekin end mein full auth flow chal raha hoga curl se. Ready?"
 
 ### ⚠️ Reminders for Future Claude
 
