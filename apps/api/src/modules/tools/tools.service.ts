@@ -34,7 +34,7 @@ export class ToolsService {
   }
 
   async create(workspaceId: string, dto: CreateToolDto): Promise<Tool> {
-    this.validateShape(dto.type ?? 'HTTP', dto);
+    this.validateShape(dto.type ?? 'HTTP', dto as ToolShapeInput);
 
     try {
       const tool = await this.prisma.tool.create({
@@ -68,7 +68,7 @@ export class ToolsService {
   async update(workspaceId: string, id: string, dto: UpdateToolDto): Promise<Tool> {
     const existing = await this.findById(workspaceId, id);
     const nextType = dto.type ?? existing.type;
-    this.validateShape(nextType, { ...existing, ...dto });
+    this.validateShape(nextType, { ...existing, ...dto } as ToolShapeInput);
 
     try {
       return await this.prisma.tool.update({
@@ -99,25 +99,33 @@ export class ToolsService {
   // Shape validation per tool type
   // ----------------------------------------------
 
-  private validateShape(type: ToolType, dto: Partial<Tool & CreateToolDto>): void {
+  private validateShape(type: ToolType, input: ToolShapeInput): void {
     if (type === 'HTTP') {
-      if (!dto.httpMethod || !dto.httpUrl) {
+      if (!input.httpMethod || !input.httpUrl) {
         throw new BadRequestException('HTTP tools require both httpMethod and httpUrl');
       }
     }
-    if (type === 'BUILT_IN' && !dto.builtInType) {
+    if (type === 'BUILT_IN' && !input.builtInType) {
       throw new BadRequestException('BUILT_IN tools require builtInType');
     }
-    if (type === 'MCP' && !dto.mcpServerUrl) {
+    if (type === 'MCP' && !input.mcpServerUrl) {
       throw new BadRequestException('MCP tools require mcpServerUrl');
     }
     if (
-      typeof dto.parameters !== 'object' ||
-      dto.parameters === null ||
-      Array.isArray(dto.parameters) ||
-      (dto.parameters as Record<string, unknown>).type !== 'object'
+      typeof input.parameters !== 'object' ||
+      input.parameters === null ||
+      Array.isArray(input.parameters) ||
+      (input.parameters as Record<string, unknown>).type !== 'object'
     ) {
       throw new BadRequestException('parameters must be a JSON Schema object with type: "object"');
     }
   }
+}
+
+interface ToolShapeInput {
+  parameters?: unknown;
+  httpMethod?: string | null;
+  httpUrl?: string | null;
+  builtInType?: string | null;
+  mcpServerUrl?: string | null;
 }
