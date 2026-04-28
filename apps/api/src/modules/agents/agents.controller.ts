@@ -11,7 +11,7 @@ import {
   Post,
   UseGuards,
 } from '@nestjs/common';
-import { Agent, Tool } from '@prisma/client';
+import { Agent, KnowledgeBase, Tool } from '@prisma/client';
 import { CurrentWorkspace } from '../../common/decorators/current-workspace.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { RolesGuard } from '../../common/guards/roles.guard';
@@ -19,6 +19,7 @@ import { WorkspaceContext, WorkspaceGuard } from '../../common/guards/workspace.
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { JwtUser } from '../auth/strategies/jwt.strategy';
+import { AttachKnowledgeBaseDto } from '../knowledge-bases/dto/attach-knowledge-base.dto';
 import { AgentsService } from './agents.service';
 import { AttachToolDto } from './dto/attach-tool.dto';
 import { CreateAgentDto } from './dto/create-agent.dto';
@@ -103,5 +104,43 @@ export class AgentsController {
     @Param('toolId', new ParseUUIDPipe({ version: '4' })) toolId: string,
   ): Promise<void> {
     await this.agentsService.detachTool(ws.id, id, toolId);
+  }
+
+  // ----- Agent-KnowledgeBase attachments -----
+
+  @Get(':id/knowledge-bases')
+  listKnowledgeBases(
+    @CurrentWorkspace() ws: WorkspaceContext,
+    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
+  ): Promise<Array<KnowledgeBase & { topK: number; minSimilarity: number }>> {
+    return this.agentsService.listKnowledgeBases(ws.id, id);
+  }
+
+  @Post(':id/knowledge-bases')
+  @HttpCode(HttpStatus.CREATED)
+  @Roles('OWNER', 'ADMIN', 'MEMBER')
+  attachKnowledgeBase(
+    @CurrentWorkspace() ws: WorkspaceContext,
+    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
+    @Body() dto: AttachKnowledgeBaseDto,
+  ): Promise<KnowledgeBase> {
+    return this.agentsService.attachKnowledgeBase(
+      ws.id,
+      id,
+      dto.knowledgeBaseId,
+      dto.topK,
+      dto.minSimilarity,
+    );
+  }
+
+  @Delete(':id/knowledge-bases/:kbId')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @Roles('OWNER', 'ADMIN', 'MEMBER')
+  async detachKnowledgeBase(
+    @CurrentWorkspace() ws: WorkspaceContext,
+    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
+    @Param('kbId', new ParseUUIDPipe({ version: '4' })) kbId: string,
+  ): Promise<void> {
+    await this.agentsService.detachKnowledgeBase(ws.id, id, kbId);
   }
 }

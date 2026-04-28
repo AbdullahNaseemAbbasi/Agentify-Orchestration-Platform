@@ -4,7 +4,7 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
-import { Agent, Prisma, Tool } from '@prisma/client';
+import { Agent, KnowledgeBase, Prisma, Tool } from '@prisma/client';
 import { PrismaService } from '@agentify/database';
 import { CreateAgentDto } from './dto/create-agent.dto';
 import { UpdateAgentDto } from './dto/update-agent.dto';
@@ -123,5 +123,69 @@ export class AgentsService {
       throw new NotFoundException('Tool was not attached to this agent');
     }
     this.logger.log(`Detached tool ${toolId} from agent ${agentId}`);
+  }
+
+  // ----------------------------------------------
+  // Agent-KnowledgeBase attachments
+  // ----------------------------------------------
+
+  async listKnowledgeBases(
+    workspaceId: string,
+    agentId: string,
+  ): Promise<Array<KnowledgeBase & { topK: number; minSimilarity: number }>> {
+    await this.findById(workspaceId, agentId);
+    const rows = await this.prisma.agentKnowledgeBase.findMany({
+      where: { agentId },
+      include: { knowledgeBase: true },
+      orderBy: { createdAt: 'asc' },
+    });
+    return rows.map((r) => ({
+      ...r.knowledgeBase,
+      topK: r.topK,
+      minSimilarity: r.minSimilarity,
+    }));
+  }
+
+  async attachKnowledgeBase(
+    workspaceId: string,
+    agentId: string,
+    kbId: string,
+    topK?: number,
+    minSimilarity?: number,
+  ): Promise<KnowledgeBase> {
+    await this.findById(workspaceId, agentId);
+
+    const kb = await this.prisma.knowledgeBase.findFirst({
+      where: { id: kbId, workspaceId },
+    });
+    if (!kb) {
+      throw new NotFoundException('Knowledge base not found in this workspace');
+    }
+
+    try {
+      await this.prisma.agentKnowledgeBase.create({
+        data: { agentId, knowledgeBaseId: kbId, topK, minSimilarity },
+      });
+    } catch (err) {
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+        throw new ConflictException('Knowledge base already attached to this agent');
+      }
+      throw err;
+    }
+
+    this.logger.log(`Attached KB ${kbId} to agent ${agentId}`);
+    return kb;
+  }
+
+  async detachKnowledgeBase(workspaceId: string, agentId: string, kbId: string): Promise<void> {
+    await this.findById(workspaceId, agentId);
+
+    const result = await this.prisma.agentKnowledgeBase.deleteMany({
+      where: { agentId, knowledgeBaseId: kbId },
+    });
+    if (result.count === 0) {
+      throw new NotFoundException('Knowledge base was not attached to this agent');
+    }
+    this.logger.log(`Detached KB ${kbId} from agent ${agentId}`);
   }
 }
