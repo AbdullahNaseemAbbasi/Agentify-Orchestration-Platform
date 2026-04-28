@@ -5,6 +5,7 @@
 ---
 
 ## 📅 Last Updated
+
 **2026-04-28** — End of Session 2
 
 ---
@@ -13,19 +14,19 @@
 
 Hum `AGENTIFY_SPEC.md` §22 ke 12-week roadmap follow kar rahe hain.
 
-| Week | Topic | Status |
-|------|-------|--------|
-| **Pre-Week 1** | Project-level conceptual overview | ✅ Done (Ch 1–7 + workspace refresh + NestJS/TS intro) |
-| **Week 1** | Foundation: NestJS monorepo + Hello World API | 🟡 **IN PROGRESS** (skeleton running, needs Prisma+Docker next) |
-| Week 2 | Foundation cont'd (Prisma + Postgres + Docker Compose) | ⬜ Pending |
-| Week 3 | Auth & Users | ⬜ Pending |
-| Week 4 | Agents & Tools | ⬜ Pending |
-| Week 5–6 | Knowledge Base & RAG | ⬜ Pending |
-| Week 7–8 | Agent Runtime Engine | ⬜ Pending |
-| Week 9 | Streaming & Async | ⬜ Pending |
-| Week 10 | Memory System | ⬜ Pending |
-| Week 11 | Observability & Webhooks | ⬜ Pending |
-| Week 12 | Polish & Deployment | ⬜ Pending |
+| Week           | Topic                                                  | Status                                                          |
+| -------------- | ------------------------------------------------------ | --------------------------------------------------------------- |
+| **Pre-Week 1** | Project-level conceptual overview                      | ✅ Done (Ch 1–7 + workspace refresh + NestJS/TS intro)          |
+| **Week 1**     | Foundation: NestJS monorepo + Hello World API          | 🟡 **IN PROGRESS** (skeleton running, needs Prisma+Docker next) |
+| Week 2         | Foundation cont'd (Prisma + Postgres + Docker Compose) | ⬜ Pending                                                      |
+| Week 3         | Auth & Users                                           | ⬜ Pending                                                      |
+| Week 4         | Agents & Tools                                         | ⬜ Pending                                                      |
+| Week 5–6       | Knowledge Base & RAG                                   | ⬜ Pending                                                      |
+| Week 7–8       | Agent Runtime Engine                                   | ⬜ Pending                                                      |
+| Week 9         | Streaming & Async                                      | ⬜ Pending                                                      |
+| Week 10        | Memory System                                          | ⬜ Pending                                                      |
+| Week 11        | Observability & Webhooks                               | ⬜ Pending                                                      |
+| Week 12        | Polish & Deployment                                    | ⬜ Pending                                                      |
 
 ---
 
@@ -54,16 +55,18 @@ Hum `AGENTIFY_SPEC.md` §22 ke 12-week roadmap follow kar rahe hain.
 
 ### Abdullah ka Current Understanding (quiz results)
 
-| Concept | Grip | Notes |
-|---------|------|-------|
-| LLM vs Agent | ~70% | Got "Tools" part right. Confused OpenAI/Gemini as "agents" — clarified they are LLM **providers**, agents are built on top. |
+| Concept                       | Grip               | Notes                                                                                                                                                                                                                         |
+| ----------------------------- | ------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| LLM vs Agent                  | ~70%               | Got "Tools" part right. Confused OpenAI/Gemini as "agents" — clarified they are LLM **providers**, agents are built on top.                                                                                                   |
 | **Workspace & multi-tenancy** | ~30% → **~90%** ✅ | Re-taught Session 2 start with code-level example (2 companies, 1 DB, `workspaceId` filter). Quiz answered correctly: understood unique workspace_id per company, explicit filtering in code, data leak as worst-case. Solid. |
-| Reasoning Loop | ~90% | Solid. Added `maxSteps` safety concept. |
+| Reasoning Loop                | ~90%               | Solid. Added `maxSteps` safety concept.                                                                                                                                                                                       |
 
 ### Clarified This Session
+
 - **"Acme Corp" is a placeholder** (like "John Doe" / "Foo Bar"). Abdullah didn't know, so switched to generic "koi bhi company" framing.
 
 ### ⚠️ Open Gaps to Re-reinforce Before Coding
+
 1. **Multi-tenancy / Workspace isolation** — why every query must include `WHERE workspaceId = ...`. Revisit with a concrete code-ish example next session.
 2. **LLM Providers** — OpenAI / Anthropic / Google are companies that build LLMs. Not the same as agents.
 
@@ -102,11 +105,13 @@ Hum `AGENTIFY_SPEC.md` §22 ke 12-week roadmap follow kar rahe hain.
 5. **🎉 First Hello World API running:** `curl http://localhost:3001/` → `"Hello from Agentify API!"` (HTTP 200, 3ms response). Default port `3000` was busy on Abdullah's machine — used `PORT=3001` override (already supported by `main.ts`).
 
 ### Tech Decisions Locked In
+
 - **Manual scaffolding, not `nest new` CLI** — user wants to read every file. NEVER use `nest new` going forward.
 - **Webpack compilation enabled** in `nest-cli.json` (NestJS default).
 - **Path aliases** (`@agentify/*`) configured in root tsconfig — for future shared libs.
 
 ### Concepts Locked This Session
+
 - ✅ Workspace / multi-tenancy (now solid via code-level example)
 - ✅ TypeScript strict + why
 - ✅ NestJS Module / Controller / Service separation
@@ -118,10 +123,12 @@ Hum `AGENTIFY_SPEC.md` §22 ke 12-week roadmap follow kar rahe hain.
 - ✅ Atomic commits (one file = one commit)
 
 ### New Rules Captured This Session
+
 - **`feedback_never_push.md`** — Claude commits only; Abdullah pushes manually. Updated PROJECT.md to remove all "→ push" references for consistency.
 - **GitHub web UI editing during local sessions causes commit-hash churn** — flagged to Abdullah; he understands. Recommended workflow: don't edit on GitHub web while we're working locally.
 
 ### Commits Made This Session (15 total)
+
 ```
 8ba8d51 feat(api): add AppController with GET / route
 d91047e feat(api): add AppService with greeting method
@@ -139,7 +146,8 @@ d91047e feat(api): add AppService with greeting method
 2033566 Updates  (Abdullah's, session 1)
 35cd2ed Updates_"Initial Project..."  (Abdullah's, session 1)
 ```
-*Note: hashes seen here may differ from origin if Abdullah did GitHub-web-UI edits between commits.*
+
+_Note: hashes seen here may differ from origin if Abdullah did GitHub-web-UI edits between commits._
 
 ---
 
@@ -203,6 +211,7 @@ Health: ~7% of the way to 200+ goal. On track for 12-week MVP if average ~17 com
 ## 📝 Update Protocol
 
 **At end of EVERY session, future Claude must:**
+
 1. Update the "Last Updated" date at top
 2. Update the Roadmap table status column
 3. Add a "Session N Log" section with:

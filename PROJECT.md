@@ -58,29 +58,29 @@ Draw ASCII diagrams when helpful. Then ask: **"Ready to implement? Kuch aur clar
 
 This is the **single source of truth** for WHAT to build. ~2240 lines, 24 sections:
 
-| Section | Topic |
-|--------|-------|
-| 1–2 | Executive summary, feature scope (MVP / Phase 2 / Phase 3) |
-| 3–4 | Tech stack, high-level architecture |
-| 5 | Monorepo folder structure |
-| 6 | Full Prisma database schema |
-| 7 | Auth (JWT + API keys) and RBAC |
-| 8 | Core modules specification (16 modules) |
-| 9 | Every REST endpoint |
-| 10 | Agent runtime engine (reasoning loop pseudocode) |
-| 11 | RAG pipeline (chunking, embeddings, retrieval) |
-| 12 | Tool execution system |
-| 13 | Memory system (short + long term) |
-| 14 | Background jobs (BullMQ) |
-| 15 | SSE streaming |
-| 16 | Webhooks |
-| 17 | Rate limiting & quotas |
-| 18 | Observability (OTel, Prometheus, Pino) |
-| 19 | Security requirements |
-| 20 | Environment variables |
-| 21 | Docker & deployment |
-| 22 | **12-week development roadmap** |
-| 23–24 | Testing strategy, coding standards |
+| Section | Topic                                                      |
+| ------- | ---------------------------------------------------------- |
+| 1–2     | Executive summary, feature scope (MVP / Phase 2 / Phase 3) |
+| 3–4     | Tech stack, high-level architecture                        |
+| 5       | Monorepo folder structure                                  |
+| 6       | Full Prisma database schema                                |
+| 7       | Auth (JWT + API keys) and RBAC                             |
+| 8       | Core modules specification (16 modules)                    |
+| 9       | Every REST endpoint                                        |
+| 10      | Agent runtime engine (reasoning loop pseudocode)           |
+| 11      | RAG pipeline (chunking, embeddings, retrieval)             |
+| 12      | Tool execution system                                      |
+| 13      | Memory system (short + long term)                          |
+| 14      | Background jobs (BullMQ)                                   |
+| 15      | SSE streaming                                              |
+| 16      | Webhooks                                                   |
+| 17      | Rate limiting & quotas                                     |
+| 18      | Observability (OTel, Prometheus, Pino)                     |
+| 19      | Security requirements                                      |
+| 20      | Environment variables                                      |
+| 21      | Docker & deployment                                        |
+| 22      | **12-week development roadmap**                            |
+| 23–24   | Testing strategy, coding standards                         |
 
 **Before starting any week's work, re-read that week's relevant sections.** Do not invent architecture outside the spec. If something seems missing or ambiguous, ASK ABDULLAH — do not guess.
 
@@ -170,7 +170,7 @@ When Abdullah points you to `PROJECT.md` at session start, do this in **exact** 
 
 **At the END of every session:** update `PROGRESS.md` per its "Update Protocol" section and commit it (`docs: update PROGRESS.md after session N`). Do not push — Abdullah pushes manually.
 
-**If Abdullah opens a fresh session and does NOT point you to PROJECT.md:** gently remind him — *"Abdullah, PROJECT.md padh lun pehle? Us mein working methodology hai."* Never start work without loading it.
+**If Abdullah opens a fresh session and does NOT point you to PROJECT.md:** gently remind him — _"Abdullah, PROJECT.md padh lun pehle? Us mein working methodology hai."_ Never start work without loading it.
 
 ---
 
