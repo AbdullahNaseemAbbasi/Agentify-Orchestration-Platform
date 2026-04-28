@@ -106,7 +106,7 @@ This is the **single source of truth** for WHAT to build. ~2240 lines, 24 sectio
    - Every completed small feature slice
    - Every bug fix
    - Every note/doc update
-4. **Push immediately after commit.** Abdullah wants commits to appear on GitHub on the day they are made, not batched locally. Never let commits sit local-only for more than one work session.
+4. **DO NOT PUSH. Abdullah pushes himself.** Claude commits locally only. Never run `git push`, never suggest pushing, never offer to push. After every commit, stop and let Abdullah decide when to push.
 5. **Do NOT squash.** Preserve granular history — the git log itself is a learning artifact.
 6. **Never `--no-verify`, never force-push** `main` (unless Abdullah explicitly asks).
 
