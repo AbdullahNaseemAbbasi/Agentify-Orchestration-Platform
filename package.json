@@ -16,8 +16,10 @@
     "start:debug": "nest start --debug --watch",
     "start:prod": "node dist/apps/api/main",
     "test": "echo 'test: not configured yet'",
-    "lint": "echo 'lint: not configured yet'",
-    "format": "echo 'format: not configured yet'"
+    "lint": "eslint \"{apps,libs}/**/*.ts\" --fix",
+    "lint:check": "eslint \"{apps,libs}/**/*.ts\"",
+    "format": "prettier --write \"{apps,libs}/**/*.{ts,json,md}\" \"*.{ts,json,md}\"",
+    "format:check": "prettier --check \"{apps,libs}/**/*.{ts,json,md}\" \"*.{ts,json,md}\""
   },
   "workspaces": [
     "apps/*",
@@ -35,6 +37,12 @@
     "@nestjs/schematics": "^10.2.3",
     "@types/express": "^5.0.0",
     "@types/node": "^20.17.10",
+    "@typescript-eslint/eslint-plugin": "^8.18.0",
+    "@typescript-eslint/parser": "^8.18.0",
+    "eslint": "^8.57.1",
+    "eslint-config-prettier": "^9.1.0",
+    "eslint-plugin-prettier": "^5.2.1",
+    "prettier": "^3.4.2",
     "source-map-support": "^0.5.21",
     "ts-loader": "^9.5.1",
     "ts-node": "^10.9.2",
