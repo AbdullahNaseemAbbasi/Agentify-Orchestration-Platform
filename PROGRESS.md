@@ -6,7 +6,7 @@
 
 ## 📅 Last Updated
 
-**2026-04-29** — End of Session 11 (Weeks 5-6 Phase 2 — full async RAG indexing pipeline live)
+**2026-04-29** — End of Session 12 (**WEEKS 5-6 COMPLETE** — Vector search service live)
 
 ---
 
@@ -21,7 +21,8 @@ Hum `AGENTIFY_SPEC.md` §22 ke 12-week roadmap follow kar rahe hain.
 | **Week 2**     | Prisma + database lib + first migration + /health/db   | ✅ Done (4 tables migrated, pgvector active, DB health green) |
 | **Week 3**     | Auth & Users (signup, login, JWT, refresh, RBAC)       | ✅ **DONE** — Phases A+B+C+D live and verified end-to-end with multi-user curl scenarios |
 | **Week 4**     | Agents & Tools                                          | ✅ **DONE** — schema migrated, Agents+Tools+attachments CRUD live and verified |
-| **Week 5–6**   | Knowledge Base & RAG                                    | 🟢 **MOSTLY DONE** — full pipeline live (KB CRUD + documents + embeddings + worker + indexing); only vector-search service + multipart upload pending |
+| **Week 5–6**   | Knowledge Base & RAG                                    | ✅ **DONE** — full pipeline live: KB CRUD + documents + embeddings + worker + indexing + vector search verified end-to-end. Only multipart file upload deferred (text upload covers learning). |
+| **Week 7–8**   | Agent Runtime Engine                                    | 🟡 **READY TO START** — needs libs/llm + RunsService reasoning loop |
 | Week 3         | Auth & Users                                           | ⬜ Pending                                                      |
 | Week 4         | Agents & Tools                                         | ⬜ Pending                                                      |
 | Week 5–6       | Knowledge Base & RAG                                   | ⬜ Pending                                                      |
@@ -794,47 +795,101 @@ feat(embeddings): add libs/embeddings with mock + OpenAI providers
 
 ---
 
+---
+
+## 📚 Session 12 Log (2026-04-29 — vector search service)
+
+### Kya Hua
+
+1. **Concept** delivered: cosine distance vs cosine similarity (linear-related but distinct ranges); `1 - distance` returned in SELECT for UI-friendly 0..1 scoring; ORDER BY distance preserves HNSW-index usage.
+
+2. **`SearchDto`** — query (1..2000 chars), optional topK (1..50), optional minSimilarity (0..1).
+
+3. **`SearchService.searchSimilar(workspaceId, kbId, query, topK?, minSimilarity?)`:**
+   - Workspace-scopes via `findFirst({where:{id, workspaceId}})` — 404 if KB not in caller's workspace
+   - Embeds query through injected `EmbeddingsProvider`
+   - Raw SQL JOIN on documents to surface document name with each chunk hit
+   - Returns `{chunkId, documentId, documentName, chunkIndex, content, similarity}`
+   - `minSimilarity` filtered in TS (post-SQL) for simplicity
+
+4. **`POST /knowledge-bases/:id/search`** endpoint added to existing controller, guarded by JwtAuthGuard + WorkspaceGuard + RolesGuard, HTTP 200 (not 201 — it's a query, not a create).
+
+5. **Wiring:**
+   - `KnowledgeBasesModule` imports `EmbeddingsModule` and registers `SearchService`
+   - `AppModule` imports `EmbeddingsModule` so the global provider is available
+
+6. **🎉 Live verified:**
+   ```
+   ✅ Two docs uploaded → both auto-INDEXED via worker (Phase 2)
+   ✅ POST /search returns SearchHit[] with documentName + similarity
+   ✅ Cross-workspace search → 404 (multi-tenancy holds)
+   ✅ minSimilarity=0.99 → 0 hits (threshold filter works)
+   ✅ Mock embeddings: similarity numerically meaningful but not semantic;
+      shape, scoping, and filtering all correct — swap to OpenAI for real
+      semantic results
+   ```
+
+### Concepts Locked This Session
+
+- ✅ Why ORDER BY distance (HNSW-friendly), SELECT similarity (UI-friendly)
+- ✅ Workspace-scoping a vector search — JOIN documents and filter `knowledgeBaseId`
+- ✅ pgvector `<=>` operator returns distance, not similarity
+- ✅ Reading raw query results into typed shape with `$queryRawUnsafe<T>()`
+- ✅ Decimal-string conversion: pg `numeric` columns return as strings — coerce explicitly
+- ✅ Tradeoff between SQL-side and TS-side filtering for thresholds (TS simpler, SQL faster on huge datasets)
+
+### Commits Made This Session (~2 atomic commits)
+
+```
+feat(kb): add POST /knowledge-bases/:id/search endpoint
+feat(kb): add SearchService for vector similarity search
+```
+
+---
+
 ## 🎬 Next Session — Resume Point
 
 **Where we left off:** Abdullah ne quiz ke answers diye, feedback mila, "Acme" ka meaning clarified. User ne ghar jaane se pehle CLAUDE.md + PROGRESS.md update karne ko kaha hai.
 
-**Where we left off (end of Session 11):** Weeks 5-6 Phase 2 done — full async indexing pipeline live. Upload text → BullMQ → worker → chunks + embeddings in DB → cosine search via pgvector verified. Mock embeddings active by default; OpenAI swappable via `OPENAI_API_KEY`.
+**Where we left off (end of Session 12):** **Weeks 5-6 fully complete!** Full RAG pipeline including search is live and verified. Upload → index → search round-trip works. Multipart file upload deferred — text-source covers everything for the learning track. Next = **Week 7-8: Agent Runtime Engine** (the actual LLM orchestration, the heart of Agentify).
 
-### Next concrete steps (Phase 3 — vector search + multipart upload)
+### Next concrete steps (Week 7-8 — Agent Runtime)
 
-1. **Vector search service** (small, high value):
-   - `apps/api/src/modules/knowledge-bases/search.service.ts`
-   - `searchSimilar(workspaceId, kbId, queryText, topK?, minSimilarity?)`:
-     1. Embed query via `EmbeddingsProvider`
-     2. Raw SQL: `SELECT id, "documentId", content, 1 - (embedding <=> $1::vector) AS similarity FROM document_chunks JOIN documents ON ... WHERE "knowledgeBaseId" = $2 AND embedding IS NOT NULL ORDER BY embedding <=> $1 LIMIT $3`
-     3. Filter by minSimilarity in TypeScript (or in WHERE)
-   - Endpoint `POST /knowledge-bases/:id/search` returning chunks + similarity scores
-   - Live test: 2 documents in KB, query returns relevant ones first
+This is the BIGGEST week of the project. Spec §10 is the reference. Plan in 4 phases:
 
-2. **Multipart file upload via MinIO** (defer further if too big):
-   - Add `@aws-sdk/client-s3` (works with MinIO)
-   - `MinioService` to upload streams
-   - `POST /knowledge-bases/:id/documents/file` (multipart)
-   - Worker reads file from MinIO via `sourceUrl`, parses by `mimeType` (PDF / TXT / MD), then chunks
-   - For PDF: use `pdf-parse`
+**Phase A — LLM provider abstraction (`libs/llm`):**
+- Provider interface: `complete({messages, tools?, temperature, maxTokens, ...}) -> {message, usage}`
+- OpenAI provider (`/v1/chat/completions` via fetch, no SDK)
+- Anthropic provider (`/v1/messages`, slightly different request shape)
+- Mock provider for tests
+- `LlmModule` resolves provider per agent.provider field
 
-3. **Run-mode improvements:**
-   - Single `npm run dev` that starts api + worker concurrently (use `concurrently` package)
-   - Update SETUP.md
+**Phase B — Threads + Messages:**
+- Add `Thread` and `Message` models (already in spec §6)
+- Migration via `prisma migrate diff`
+- ThreadsModule, MessagesModule (workspace-scoped CRUD)
 
-### Week 7-8 plan (after Phase 3 — Agent Runtime Engine)
+**Phase C — Reasoning loop (RunsService):**
+- `execute(agentId, threadId, input)`:
+  1. Create Run (status PENDING)
+  2. Load agent config + thread history + attached tools + KB results
+  3. Loop up to maxSteps:
+     - Call LLM with messages + tool definitions
+     - If tool call → execute (HTTP tool fetch) → append result → loop
+     - If final message → break
+  4. Persist messages + token usage + Run status
+- HTTP tool execution (`HttpToolExecutor` — substitutes URL template params, makes fetch with timeout)
+- Token counting via `tiktoken` or estimation
 
-This is the BIG one — actual LLM orchestration:
-- LLM provider abstraction (OpenAI + Anthropic) — `libs/llm`
-- `RunsService.execute(agentId, threadId, input)` — the reasoning loop
-- Tool execution (HTTP tools fetching from URL templates)
-- Token counting + usage recording
-- Synchronous run for now; streaming + async in Week 9
-- This unlocks the actual product: an LLM-backed conversational agent that can call tools and search KBs
+**Phase D — Sync run endpoint:**
+- `POST /agents/:id/runs` returns final message after loop completes
+- Live test: create agent + KB + tool, run conversation, see tool calls + RAG context in messages
+
+**Streaming + async via BullMQ deferred to Week 9.**
 
 ### Suggested opening message for next session
 
-> "Salam Abdullah! Pichli session mein full RAG indexing pipeline live ho gaya — upload text, worker process kare, chunks + embeddings DB mein. Aaj Phase 3 — vector search service. Embed user query → cosine search top-K chunks → return. Choti hissa, lekin jo retrieval ka asli payoff hai. Ready?"
+> "Salam Abdullah! Weeks 5-6 done — RAG pipeline full ready. Aaj Week 7-8 ka start — Agent Runtime Engine. Yeh project ka core hai. Bara hai — 4 phases mein todenge. Aaj Phase A — libs/llm provider abstraction (OpenAI + Anthropic + mock). Phir Threads/Messages, phir reasoning loop. Real LLM call karne ke liye `OPENAI_API_KEY` ya `ANTHROPIC_API_KEY` chahiye hoga — aap ke paas hai? Otherwise mock se progress karenge."
 
 ### ⚠️ Reminders for Future Claude
 
@@ -858,11 +913,11 @@ This is the BIG one — actual LLM orchestration:
 ## 🔖 Commits So Far
 
 Target: 200+ atomic commits.
-Current: **~75 commits locally** (push status owned by Abdullah).
+Current: **~77 commits locally** (push status owned by Abdullah).
 
-S1 (3) + S2 (12) + S3 (8) + S4 (9) + S5 (5) + S6 (5) + S7 (9) + S8 (6) + S9 (7) + S10 (5) + S11 (~5).
+S1 (3) + S2 (12) + S3 (8) + S4 (9) + S5 (5) + S6 (5) + S7 (9) + S8 (6) + S9 (7) + S10 (5) + S11 (5) + S12 (~2).
 
-Health: ~37% of the way to 200+ goal after 11 sessions across 2 calendar days. Weeks 1-4 done; Weeks 5-6 mostly done. On track.
+Health: ~38% of the way to 200+ goal after 12 sessions across 2 calendar days. Weeks 1-6 done. On track for 12-week MVP.
 
 ---
 
