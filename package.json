@@ -10,11 +10,15 @@
     "npm": ">=10.0.0"
   },
   "scripts": {
-    "build": "nest build",
+    "build": "nest build && nest build worker",
     "start": "nest start",
     "start:dev": "nest start --watch",
     "start:debug": "nest start --debug --watch",
     "start:prod": "node dist/apps/api/main",
+    "build:worker": "nest build worker",
+    "start:worker": "nest start worker",
+    "start:worker:dev": "nest start worker --watch",
+    "start:worker:prod": "node dist/apps/worker/main",
     "test": "echo 'test: not configured yet'",
     "lint": "eslint \"{apps,libs}/**/*.ts\" --fix",
     "lint:check": "eslint \"{apps,libs}/**/*.ts\"",
