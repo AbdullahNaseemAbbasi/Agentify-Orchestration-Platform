@@ -68,6 +68,8 @@ model Workspace {
   agents         Agent[]
   tools          Tool[]
   knowledgeBases KnowledgeBase[]
+  threads        Thread[]
+  runs           Run[]
 
   @@map("workspaces")
 }
@@ -128,6 +130,8 @@ model Agent {
   workspace      Workspace            @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   tools          AgentTool[]
   knowledgeBases AgentKnowledgeBase[]
+  threads        Thread[]
+  runs           Run[]
 
   @@index([workspaceId])
   @@map("agents")
@@ -268,3 +272,97 @@ model DocumentChunk {
 
 // HNSW vector index is created by raw SQL appended to the migration:
 //   CREATE INDEX ON document_chunks USING hnsw (embedding vector_cosine_ops);
+
+// ============================================
+// THREADS, MESSAGES, RUNS (Week 7-8)
+// ============================================
+
+model Thread {
+  id          String   @id @default(uuid())
+  workspaceId String
+  agentId     String
+  externalId  String?
+  title       String?
+  metadata    Json?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  agent     Agent     @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  messages  Message[]
+  runs      Run[]
+
+  @@index([workspaceId, agentId])
+  @@index([externalId])
+  @@map("threads")
+}
+
+model Message {
+  id         String      @id @default(uuid())
+  threadId   String
+  runId      String?
+  role       MessageRole
+  content    String      @db.Text
+  toolCalls  Json?
+  toolCallId String?
+  name       String?
+  metadata   Json?
+  createdAt  DateTime    @default(now())
+
+  thread Thread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  run    Run?   @relation(fields: [runId], references: [id], onDelete: SetNull)
+
+  @@index([threadId])
+  @@index([runId])
+  @@map("messages")
+}
+
+enum MessageRole {
+  SYSTEM
+  USER
+  ASSISTANT
+  TOOL
+}
+
+model Run {
+  id               String    @id @default(uuid())
+  workspaceId      String
+  agentId          String
+  threadId         String
+  status           RunStatus @default(PENDING)
+  startedAt        DateTime?
+  completedAt      DateTime?
+  failedAt         DateTime?
+  errorCode        String?
+  errorMessage     String?
+  inputTokens      Int       @default(0)
+  outputTokens     Int       @default(0)
+  totalTokens      Int       @default(0)
+  estimatedCostUsd Decimal   @default(0) @db.Decimal(10, 6)
+  stepCount        Int       @default(0)
+  model            String
+  provider         String
+  metadata         Json?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  agent     Agent     @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  thread    Thread    @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  messages  Message[]
+
+  @@index([workspaceId, status])
+  @@index([agentId])
+  @@index([threadId])
+  @@map("runs")
+}
+
+enum RunStatus {
+  PENDING
+  IN_PROGRESS
+  REQUIRES_ACTION
+  COMPLETED
+  FAILED
+  CANCELLED
+  TIMEOUT
+}
