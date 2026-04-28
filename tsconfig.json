@@ -26,6 +26,10 @@
       "@agentify/common/*": ["libs/common/src/*"],
       "@agentify/database": ["libs/database/src"],
       "@agentify/database/*": ["libs/database/src/*"],
+      "@agentify/embeddings": ["libs/embeddings/src"],
+      "@agentify/embeddings/*": ["libs/embeddings/src/*"],
+      "@agentify/queue": ["libs/queue/src"],
+      "@agentify/queue/*": ["libs/queue/src/*"],
       "@agentify/llm": ["libs/llm/src"],
       "@agentify/llm/*": ["libs/llm/src/*"]
     }
