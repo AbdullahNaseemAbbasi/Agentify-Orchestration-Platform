@@ -43,7 +43,50 @@ agentify/
 
 ## Getting Started
 
-> ⚠️ Setup instructions will be added once the foundation modules are implemented.
+### Prerequisites
+
+- Node.js 20+ and npm 10+
+- Docker Desktop (for local Postgres, Redis, MinIO)
+
+### First-time setup
+
+```bash
+# 1. Install dependencies
+npm install
+
+# 2. Copy env template (then edit .env if you need to override anything)
+cp .env.example .env
+
+# 3. Start local infrastructure (Postgres + Redis + MinIO)
+docker compose -f docker-compose.dev.yml up -d
+
+# 4. Run the API in watch mode
+npm run start:dev
+```
+
+Visit `http://localhost:3000` — should respond with `Hello from Agentify API!`.
+
+### Local services
+
+| Service           | Host port | Notes                                   |
+| ----------------- | --------- | --------------------------------------- |
+| Postgres+pgvector | `5433`    | User/pass/db: `agentify` / `password` / `agentify` |
+| Redis             | `6381`    | No auth (local dev only)                |
+| MinIO API         | `9000`    | S3-compatible                           |
+| MinIO console     | `9001`    | Login: `minioadmin` / `minioadmin`      |
+
+> Ports are shifted from defaults to avoid conflicts with other local stacks (e.g. another Postgres on 5432).
+
+### Useful commands
+
+```bash
+npm run start:dev    # API in watch mode
+npm run lint         # ESLint with auto-fix
+npm run format       # Prettier write
+docker compose -f docker-compose.dev.yml ps      # service status
+docker compose -f docker-compose.dev.yml down    # stop services
+docker compose -f docker-compose.dev.yml down -v # stop + delete data
+```
 
 ## License
 

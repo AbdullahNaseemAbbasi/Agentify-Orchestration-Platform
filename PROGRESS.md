@@ -6,7 +6,7 @@
 
 ## 📅 Last Updated
 
-**2026-04-28** — End of Session 2
+**2026-04-29** — End of Session 3
 
 ---
 
@@ -17,8 +17,8 @@ Hum `AGENTIFY_SPEC.md` §22 ke 12-week roadmap follow kar rahe hain.
 | Week           | Topic                                                  | Status                                                          |
 | -------------- | ------------------------------------------------------ | --------------------------------------------------------------- |
 | **Pre-Week 1** | Project-level conceptual overview                      | ✅ Done (Ch 1–7 + workspace refresh + NestJS/TS intro)          |
-| **Week 1**     | Foundation: NestJS monorepo + Hello World API          | 🟡 **IN PROGRESS** (skeleton running, needs Prisma+Docker next) |
-| Week 2         | Foundation cont'd (Prisma + Postgres + Docker Compose) | ⬜ Pending                                                      |
+| **Week 1**     | Foundation: NestJS monorepo + Hello World API          | ✅ Done (skeleton running, lint+format, Docker stack live)     |
+| **Week 2**     | Prisma + database lib + first migration                | 🟡 **IN PROGRESS** (Docker infra ready, Prisma is next)        |
 | Week 3         | Auth & Users                                           | ⬜ Pending                                                      |
 | Week 4         | Agents & Tools                                         | ⬜ Pending                                                      |
 | Week 5–6       | Knowledge Base & RAG                                   | ⬜ Pending                                                      |
