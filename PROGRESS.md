@@ -6,7 +6,7 @@
 
 ## 📅 Last Updated
 
-**2026-04-29** — End of Session 6 (Phase B of Week 3 — Users module live)
+**2026-04-29** — End of Session 7 (Week 3 Phases A+B+C done — full auth live)
 
 ---
 
@@ -19,7 +19,8 @@ Hum `AGENTIFY_SPEC.md` §22 ke 12-week roadmap follow kar rahe hain.
 | **Pre-Week 1** | Project-level conceptual overview                      | ✅ Done (Ch 1–7 + workspace refresh + NestJS/TS intro)          |
 | **Week 1**     | Foundation: NestJS monorepo + Hello World API          | ✅ Done (skeleton running, lint+format, Docker stack live)     |
 | **Week 2**     | Prisma + database lib + first migration + /health/db   | ✅ Done (4 tables migrated, pgvector active, DB health green) |
-| **Week 3**     | Auth & Users (signup, login, JWT, refresh, RBAC)       | 🟡 **IN PROGRESS** — Phases A + B done (utils, keys, UsersModule); Phase C (Auth flows), D (Workspaces+RBAC) pending |
+| **Week 3**     | Auth & Users (signup, login, JWT, refresh, RBAC)       | 🟢 **MOSTLY DONE** — Phases A+B+C live and curl-verified; only Phase D (Workspaces CRUD + RBAC roles guard) pending |
+| **Week 4**     | Agents & Tools                                          | ⬜ Pending                                                      |
 | Week 3         | Auth & Users                                           | ⬜ Pending                                                      |
 | Week 4         | Agents & Tools                                         | ⬜ Pending                                                      |
 | Week 5–6       | Knowledge Base & RAG                                   | ⬜ Pending                                                      |
@@ -406,69 +407,155 @@ chore: add class-validator and class-transformer for DTO validation
 
 ---
 
+---
+
+## 📚 Session 7 Log (2026-04-29 — Phase C of Week 3)
+
+### Kya Hua
+
+1. **Concept chapter** delivered: JWT structure, access vs refresh tokens, token rotation, server-side revocation, Passport.js role, signup transaction.
+
+2. **Installed Passport stack** (~27 new packages, 533 total):
+   - `@nestjs/jwt`, `@nestjs/passport`, `@nestjs/config`
+   - `passport`, `passport-jwt`, `@types/passport-jwt`
+
+3. **`apps/api/src/config/jwt.config.ts`** — `JwtConfigService` (implements `JwtOptionsFactory`) reads RS256 keypair from `keys/*.pem` paths via `ConfigService`. Hard-fails with friendly error if keys missing. Returns sign/verify options with explicit `algorithms: ['RS256']` (defends against `alg: none` tricks), issuer, audience.
+
+4. **Auth DTOs:** `SignupDto` (mirrors CreateUserDto bounds), `LoginDto` (deliberately permissive `MinLength(1)` — never reveal password rules at login), `RefreshDto`.
+
+5. **`AuthService`** (the big file — ~230 lines):
+   - `signup` — Prisma `$transaction` creates User + Workspace + WorkspaceMember(OWNER) atomically; `slugify` + `uniqueSlug` helpers generate human-readable workspace slug from name
+   - `login` — same generic `Invalid email or password` for missing user OR wrong password (email-enumeration prevention); updates `lastLoginAt`
+   - `refresh` — verifies JWT signature, looks up SHA-256 hash in DB, checks not revoked / not expired, **rotates** (revoke old, issue new pair)
+   - `logout` — idempotent `updateMany` setting `revokedAt`
+   - `issueTokens` — internal helper; refresh token stored hashed (SHA-256), not plaintext
+
+6. **JWT plumbing:**
+   - `JwtStrategy` extends `PassportStrategy(Strategy, 'jwt')`; `validate()` checks `payload.type === 'access'` and confirms user still exists in DB
+   - `JwtAuthGuard` wraps `AuthGuard('jwt')`
+   - `@CurrentUser()` param decorator extracts `req.user` cleanly
+
+7. **`AuthController`** with 4 endpoints: POST `/auth/signup` (201), `/auth/login` (200), `/auth/refresh` (200), `/auth/logout` (204).
+
+8. **`AuthModule`** uses `JwtModule.registerAsync` with `JwtConfigService`, imports `ConfigModule`, `PassportModule`, `UsersModule`.
+
+9. **`AppModule`** updated to import `ConfigModule.forRoot({ isGlobal: true, cache: true })` and `AuthModule`.
+
+10. **`UsersController`** added with `@UseGuards(JwtAuthGuard)` — `GET /users/me` returns sanitized user (no passwordHash).
+
+11. **Critical infra fix — webpack externalization:**
+    - **Symptom:** Server build OK, but at runtime: `Cannot find module 'libs/database/src/database.module' imported from libs/database/src/index.ts`
+    - **Root cause:** webpack was treating `@agentify/database` / `@agentify/common` as externals because npm workspaces had created symlinks at `node_modules/@agentify/*` pointing to `libs/*` whose `package.json` set `main: 'src/index.ts'` (Node cannot require `.ts`).
+    - **Fix:** Remove `libs/*` from `"workspaces"` in root `package.json`. Webpack now falls back to tsconfig path-alias resolution and bundles lib source code directly into `dist/apps/api/main.js`.
+    - **Standard NestJS monorepo pattern:** libs are pure TS path aliases, not workspace packages.
+
+12. **🎉 Live curl-based end-to-end test passed (9 steps):**
+    ```
+    ✅ Signup → 201, returns user+workspace+tokens (slug "test-user" auto-generated)
+    ✅ GET /users/me with access token → 200, sanitized response
+    ✅ Login same creds → 200, fresh tokens
+    ✅ Refresh → 200, new token pair
+    ✅ Old refresh reused → 401 "revoked or expired"  (rotation works)
+    ✅ Logout new refresh → 204
+    ✅ Refresh after logout → 401  (server-side revocation works)
+    ✅ Wrong password → 401 "Invalid email or password"
+    ✅ Non-existent email → 401 same generic message  (enumeration prevented)
+    ```
+
+### Concepts Locked This Session
+
+- ✅ JWT structure (header.payload.signature) and what's encoded vs encrypted
+- ✅ Access vs refresh tokens and why two
+- ✅ Token rotation pattern (revoke-on-use)
+- ✅ Hashing refresh tokens in DB (SHA-256 — not bcrypt/argon2 since lookup, not auth)
+- ✅ Server-side revocation as the killer feature of refresh-token DB storage
+- ✅ Email enumeration prevention via uniform error messages
+- ✅ Atomic signup via `prisma.$transaction`
+- ✅ Slug generation + uniqueness retry pattern
+- ✅ Passport `Strategy` + `validate()` lifecycle in NestJS
+- ✅ `PassportStrategy` mixin pattern
+- ✅ `@CurrentUser()` param decorator construction
+- ✅ `JwtModule.registerAsync` with `useClass` factory
+- ✅ ConfigModule global + `getOrThrow` for fail-fast env var validation
+- ✅ NestJS monorepo workspace vs path-alias trade-off (this fix is critical)
+
+### Critical Reminders Captured
+
+- **Do not put `libs/*` back into npm `workspaces`** — webpack will externalize them again. Path aliases handle resolution.
+- **`libs/*/package.json`** can keep `name`, `version`, `private`, `main: 'src/index.ts'` for editor support — they just shouldn't be in npm workspaces.
+
+### Commits Made This Session (~9 atomic commits)
+
+```
+fix: drop libs/* from npm workspaces to fix webpack externalization
+feat(users): add UsersController with JWT-protected GET /users/me
+feat(auth): add AuthController and AuthModule, wire ConfigModule global
+feat(auth): add JwtStrategy, JwtAuthGuard, and @CurrentUser decorator
+feat(auth): add AuthService with signup/login/refresh/logout
+feat(auth): add SignupDto, LoginDto, RefreshDto
+feat(api): add JwtConfigService loading RS256 keypair from disk
+chore: add @nestjs/jwt + @nestjs/passport + passport stack
+```
+
+---
+
 ## 🎬 Next Session — Resume Point
 
 **Where we left off:** Abdullah ne quiz ke answers diye, feedback mila, "Acme" ka meaning clarified. User ne ghar jaane se pehle CLAUDE.md + PROGRESS.md update karne ko kaha hai.
 
-**Where we left off (end of Session 6):** Phase B of Week 3 done. UsersModule live with class-validator DTO, race-safe `create()`, sanity-tested end-to-end (real user inserted in Postgres, password verified, duplicate rejected). Next = Phase C (Auth flows).
+**Where we left off (end of Session 7):** Phases A+B+C of Week 3 are live. Full auth flow (signup → /users/me → login → refresh → logout) verified end-to-end via curl with all security patterns confirmed working. Next = Phase D (Workspaces CRUD + RBAC).
 
-### Next concrete steps (Phase C — Auth Module)
+### Next concrete steps (Phase D — Workspaces + RBAC)
 
-1. **Install Passport stack:**
-   - `@nestjs/jwt`, `@nestjs/passport`, `passport`, `passport-jwt`, `@types/passport-jwt`
+1. **Workspaces module (`apps/api/src/modules/workspaces`):**
+   - `dto/create-workspace.dto.ts`, `dto/update-workspace.dto.ts`
+   - `workspaces.service.ts`: `findAllForUser(userId)`, `findById(id, userId)`, `create(dto, ownerId)`, `update`, `softDelete`
+   - `workspaces.controller.ts`: GET /workspaces, POST /workspaces, GET /workspaces/:id, PATCH /workspaces/:id, DELETE /workspaces/:id
+   - All routes JWT-protected
+   - **Multi-tenancy enforcement:** every query filters by user's membership
 
-2. **Config service that reads RSA keys:**
-   - `apps/api/src/config/jwt.config.ts` — reads `JWT_PRIVATE_KEY_PATH` / `JWT_PUBLIC_KEY_PATH` and loads PEM contents via `fs.readFileSync` at module init
-   - Returns options for `JwtModule.registerAsync({ ... })`
+2. **Workspace context decorator:**
+   - `@CurrentWorkspace()` decorator that resolves the workspace from a header (`X-Workspace-Id`) or from the route param
+   - `WorkspaceContext` interface with `id`, `slug`, `role`
+   - `WorkspaceGuard` that validates user is a member and attaches role to request
 
-3. **Auth module structure (`apps/api/src/modules/auth/`):**
-   - `dto/signup.dto.ts`, `dto/login.dto.ts`, `dto/refresh.dto.ts`
-   - `auth.service.ts`:
-     - `signup(dto)` — creates User + default Workspace + WorkspaceMember(OWNER) in a Prisma transaction; returns user + access/refresh token pair
-     - `login(dto)` — looks up user, verifyPassword, issues tokens, persists refresh-token hash
-     - `refresh(dto)` — verifies signature, looks up tokenHash in DB (must exist + not revoked + not expired), rotates (revoke old, issue new pair)
-     - `logout(refreshToken)` — sets `revokedAt`
-   - `auth.controller.ts`: POST `/auth/signup`, `/auth/login`, `/auth/refresh`, `/auth/logout`
-   - `strategies/jwt.strategy.ts` — passport-jwt strategy reading public key
-   - `guards/jwt-auth.guard.ts`
-   - `decorators/current-user.decorator.ts` — extracts `req.user` from JWT payload
-   - `auth.module.ts`
+3. **RBAC roles:**
+   - `@Roles(OWNER, ADMIN)` decorator using `Reflector`
+   - `RolesGuard` reads metadata, checks `req.workspace.role` against allowed list
+   - Apply combination `@UseGuards(JwtAuthGuard, WorkspaceGuard, RolesGuard)` on protected routes
 
-4. **Update users module:** add `UsersController` with JWT-protected `GET /users/me` endpoint (now possible since `JwtAuthGuard` exists).
+4. **Workspace member management endpoints (later in week):**
+   - POST /workspaces/:id/members (invite by email)
+   - DELETE /workspaces/:id/members/:userId
+   - PATCH /workspaces/:id/members/:userId (change role)
 
-5. **Sanity-test full flow live:**
-   - `curl -X POST /auth/signup -d '{...}'` → returns access + refresh token
-   - `curl -H "Authorization: Bearer <access>" /users/me` → returns user
-   - `curl -X POST /auth/refresh -d '{"refresh_token": "..."}'` → new pair
-   - `curl -X POST /auth/logout` → 204; refresh token now revoked
+5. **Test live:** curl flow that confirms a non-member of a workspace gets 403, an OWNER can change roles, an ADMIN cannot delete the workspace.
 
-### Phase D plan (Session 8) — Workspaces + RBAC
-- `WorkspacesModule` for CRUD
-- `@CurrentWorkspace()` decorator + `WorkspaceContext`
-- `@Roles(OWNER, ADMIN, ...)` decorator + `RolesGuard`
-- All workspace-scoped service methods enforced
+### Week 4 plan (after Phase D)
+
+- Agents CRUD (spec §8.4)
+- Tools CRUD (spec §8.5)
+- Agent-Tool attachment
 
 ### Suggested opening message for next session
 
-> "Salam Abdullah! Phase B done — UsersModule live, hashed user actually banaya. Aaj Phase C — Auth flows. JWT signing/verification, signup/login/refresh/logout endpoints, JwtAuthGuard. Yeh thora bara hissa hai (~10-12 commits) lekin end mein full auth flow chal raha hoga curl se. Ready?"
+> "Salam Abdullah! Pichli session mein full auth flow live ho gaya — signup, login, refresh rotation, logout, JWT-protected /users/me, sab curl se verified. Aaj Phase D — Workspaces CRUD + RBAC. Multi-tenancy enforce karenge: har query workspaceId filter, member check, role-based access. End mein curl se confirm karenge ke ek user doosre user ke workspace ko access nahi kar sakta. Ready?"
 
 ### ⚠️ Reminders for Future Claude
 
 - **Never run `git push`** — only commits, Abdullah pushes himself.
 - **Never use scaffolding CLIs** (`nest new`, `prisma init`, etc.) without first explaining what they would do.
 - **Postgres on host port 5433** (NOT 5432); Redis on **6381** (NOT 6379). Don't "fix" back to defaults.
-- **Postgres credentials** (local dev): user `agentify`, password `password`, db `agentify`. Schema = `public`.
+- **Postgres credentials** (local dev): user `agentify`, password `password`, db `agentify`.
 - **pgvector 0.8.2 active** — when adding embeddings, use `Unsupported("vector(1536)")` per spec §6.
-- **`prisma migrate dev` is interactive — does NOT work in agent shells.** Workflow instead:
-  1. `npx prisma migrate diff --from-empty --to-schema-datamodel <schema> --script > migrations/<TIMESTAMP>_<name>/migration.sql`
-     (or `--from-migrations` for incremental)
-  2. `npm run prisma:migrate:deploy`
-  3. Ensure `migration_lock.toml` exists (provider = postgresql)
-- **`@agentify/database` and `@agentify/common` path aliases** work transparently in apps via root tsconfig paths.
-- **Server port 3000/3001 often busy on Abdullah's machine.** Use `PORT=3002` (or higher) for verification runs.
+- **`prisma migrate dev` is interactive — does NOT work in agent shells.** Use `prisma migrate diff` + `prisma migrate deploy` workflow instead.
+- **`@agentify/database` and `@agentify/common` path aliases** work via root tsconfig — these libs are NOT in npm `workspaces` (would break webpack bundling). Do not add them back.
+- **Server port 3000/3001 often busy.** Use `PORT=3002` (or higher) for verification runs.
 - **Docker Compose path:** always use `-f docker-compose.dev.yml` flag.
-- **JWT keys live at `keys/*.pem`** (gitignored). `npm run keys:generate` regenerates them — but DO NOT regenerate carelessly: it invalidates every issued token. Script refuses to overwrite existing files.
-- **Argon2 password hash format:** `$argon2id$v=19$m=19456,t=2,p=1$<salt>$<hash>` (~97 chars). Salt + params embedded — `passwordHash` column needs to fit a string of at least ~120 chars (Postgres TEXT is unlimited so we're fine).
+- **JWT keys live at `keys/*.pem`** (gitignored). `npm run keys:generate` regenerates — but never regenerate carelessly: invalidates every issued token. Script refuses to overwrite.
+- **Argon2 password hash format:** `$argon2id$v=19$m=19456,t=2,p=1$<salt>$<hash>` (~97 chars). Postgres `TEXT` is unlimited so we're fine.
+- **JWT payload claim names:** `sub` = user id, `type` = `'access'` or `'refresh'`, `iss` = `agentify`, `aud` = `agentify-api`. Refresh tokens also carry a `jti` (random nonce). Do not change these without updating both `AuthService.issueTokens` and `JwtStrategy.validate`.
+- **Refresh tokens are stored as SHA-256 hashes in DB**, never plaintext.
 - **Abdullah edits via GitHub web UI between sessions** — commit hashes churn, substance is what matters.
 
 ---
@@ -476,11 +563,11 @@ chore: add class-validator and class-transformer for DTO validation
 ## 🔖 Commits So Far
 
 Target: 200+ atomic commits.
-Current: **~32 commits locally** (push status owned by Abdullah).
+Current: **~52 commits locally** (push status owned by Abdullah).
 
-Session 1 (3 bulk commits) + Session 2 (12 atomic) + Session 3 (8 atomic) + Session 4 (~9 atomic).
+S1 (3 bulk) + S2 (12) + S3 (8) + S4 (9) + S5 (5) + S6 (5) + S7 (~9).
 
-Health: ~16% of the way to 200+ goal after 4 sessions across 2 calendar days. On track for 12-week MVP.
+Health: ~26% of the way to 200+ goal after 7 sessions across 2 calendar days. Strong pace; comfortably on track for 12-week MVP.
 
 ---
 
