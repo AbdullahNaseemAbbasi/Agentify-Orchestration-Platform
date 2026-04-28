@@ -6,7 +6,7 @@
 
 ## 📅 Last Updated
 
-**2026-04-29** — End of Session 10 (Weeks 5-6 Phase 1 — KB schema + KB CRUD + Agent-KB attachments live)
+**2026-04-29** — End of Session 11 (Weeks 5-6 Phase 2 — full async RAG indexing pipeline live)
 
 ---
 
@@ -21,7 +21,7 @@ Hum `AGENTIFY_SPEC.md` §22 ke 12-week roadmap follow kar rahe hain.
 | **Week 2**     | Prisma + database lib + first migration + /health/db   | ✅ Done (4 tables migrated, pgvector active, DB health green) |
 | **Week 3**     | Auth & Users (signup, login, JWT, refresh, RBAC)       | ✅ **DONE** — Phases A+B+C+D live and verified end-to-end with multi-user curl scenarios |
 | **Week 4**     | Agents & Tools                                          | ✅ **DONE** — schema migrated, Agents+Tools+attachments CRUD live and verified |
-| **Week 5–6**   | Knowledge Base & RAG                                    | 🟡 **IN PROGRESS** — schema + KB CRUD + Agent-KB attachments live; documents/embeddings/worker pending |
+| **Week 5–6**   | Knowledge Base & RAG                                    | 🟢 **MOSTLY DONE** — full pipeline live (KB CRUD + documents + embeddings + worker + indexing); only vector-search service + multipart upload pending |
 | Week 3         | Auth & Users                                           | ⬜ Pending                                                      |
 | Week 4         | Agents & Tools                                         | ⬜ Pending                                                      |
 | Week 5–6       | Knowledge Base & RAG                                   | ⬜ Pending                                                      |
@@ -713,54 +713,128 @@ feat(database): add KnowledgeBase, Document, DocumentChunk, AgentKB models
 
 ---
 
+---
+
+## 📚 Session 11 Log (2026-04-29 — RAG indexing pipeline)
+
+### Kya Hua
+
+1. **`libs/embeddings`** — provider abstraction:
+   - `EmbeddingsProvider` interface (modelId, dimensions, embed(texts))
+   - `MockEmbeddingsProvider` — deterministic SHA-256-derived 1536-dim vectors (no API key needed for local dev)
+   - `OpenAIEmbeddingsProvider` — calls /v1/embeddings via native `fetch` (no openai SDK dependency), defaults to `text-embedding-3-small`
+   - `EmbeddingsModule` (@Global) auto-selects: OpenAI when `OPENAI_API_KEY` is set, otherwise mock
+
+2. **`libs/queue`** — BullMQ wiring:
+   - Installed `@nestjs/bullmq`, `bullmq` 5, `ioredis` 5
+   - `QUEUE_NAMES` constant + typed `QueueName`
+   - `DocumentProcessingJob` payload type shared between producer + consumer
+   - `QueueModule.forRoot()` + `QueueModule.registerQueues(...)` so each app declares the queues it needs
+   - `tsconfig.json` paths now include `@agentify/embeddings` and `@agentify/queue`
+
+3. **`apps/worker`** — second NestJS application:
+   - `main.ts` uses `NestFactory.createApplicationContext` (no HTTP server) with SIGINT/SIGTERM graceful shutdown
+   - `WorkerModule` imports DatabaseModule + EmbeddingsModule + QueueModule.forRoot() + registerQueues('DOCUMENT_PROCESSING')
+   - `nest-cli.json` registers the worker project
+   - New scripts: `build:worker`, `start:worker`, `start:worker:dev`, `start:worker:prod`
+   - Root `build` script now builds both apps
+
+4. **`DocumentProcessor`** — actual indexing logic:
+   - Extends `WorkerHost` from `@nestjs/bullmq`, processes `document-processing` queue
+   - Marks document PROCESSING → loads KB config → chunks text (char-based with overlap) → embeds in batches of 64 → wipes prior chunks → inserts new chunks via `$executeRawUnsafe` (Prisma's typed client cannot set pgvector columns) → marks INDEXED
+   - On error marks FAILED with truncated message; relies on BullMQ retry config
+
+5. **`DocumentsModule` (api side):**
+   - `POST /knowledge-bases/:kbId/documents/text` accepts `{name, text<=1MiB, metadata?}`, persists Document with status=PENDING, enqueues `process-document` job (3 attempts, 5s exponential backoff)
+   - `GET`, `GET/:id`, `DELETE` endpoints all route through `requireKb` for workspace isolation
+   - AppModule imports `QueueModule.forRoot()` once + `DocumentsModule`
+
+6. **🎉 Live end-to-end test passed:**
+   ```
+   POST /documents/text  →  201 (status=PENDING)
+                            ↓
+                    BullMQ on Redis
+                            ↓
+                    Worker picks up
+                            ↓
+   Wait 3 seconds   →  GET /documents/:id  →  status=INDEXED
+                            ↓
+   document_chunks table:  2 rows with embedding columns populated
+                            ↓
+   Cosine similarity:  pgvector `<=>` returns 0.0 self-distance
+                       and 1.02 to a different chunk
+   ```
+
+### Concepts Locked This Session
+
+- ✅ Background job pattern (instant HTTP response + async worker)
+- ✅ BullMQ + Redis as a durable, retryable queue
+- ✅ Standalone NestJS app (no HTTP, just DI + processors)
+- ✅ Provider-pattern abstractions (Mock vs OpenAI swappable via env)
+- ✅ Two processes, one codebase: `apps/api` produces, `apps/worker` consumes
+- ✅ pgvector cannot round-trip through Prisma typed client — raw SQL is mandatory for `vector(1536)` writes; format is `[v1,v2,...]::vector(1536)`
+- ✅ Chunking strategy with overlap (`stride = chunkSize - chunkOverlap`)
+- ✅ Cosine distance operator `<=>` and HNSW index in action
+
+### Critical Reminders
+
+- **`apps/api` and `apps/worker` must both be running** for indexing to complete. If only api is up, documents stay PENDING forever.
+- **Mock embeddings are NOT semantically meaningful** — search results are deterministic but not similarity-based. Set `OPENAI_API_KEY` in `.env` to switch to real embeddings.
+- **pgvector column writes:** always go through raw SQL with the `[...]::vector(N)` cast literal.
+- **Port 3000-3002 may be busy** on Abdullah's machine — Session 11 used `PORT=3003`. Always pick an unused port.
+
+### Commits Made This Session (~5 atomic commits)
+
+```
+feat(documents): add DocumentsModule with text upload + indexing enqueue
+feat(worker): scaffold apps/worker with DocumentProcessor
+feat(queue): add libs/queue with BullMQ wiring + queue names + job types
+feat(embeddings): add libs/embeddings with mock + OpenAI providers
+```
+
+---
+
 ## 🎬 Next Session — Resume Point
 
 **Where we left off:** Abdullah ne quiz ke answers diye, feedback mila, "Acme" ka meaning clarified. User ne ghar jaane se pehle CLAUDE.md + PROGRESS.md update karne ko kaha hai.
 
-**Where we left off (end of Session 10):** Weeks 5-6 Phase 1 done — schema for KB+Document+Chunk+AgentKB applied (with HNSW index for vector search), KnowledgeBasesModule CRUD live, Agent-KB attachment endpoints live. Documents and embeddings still pending (need worker app + provider abstraction).
+**Where we left off (end of Session 11):** Weeks 5-6 Phase 2 done — full async indexing pipeline live. Upload text → BullMQ → worker → chunks + embeddings in DB → cosine search via pgvector verified. Mock embeddings active by default; OpenAI swappable via `OPENAI_API_KEY`.
 
-### Next concrete steps (Weeks 5-6 Phase 2 — Documents + Embeddings + Worker)
+### Next concrete steps (Phase 3 — vector search + multipart upload)
 
-1. **Embeddings library (`libs/embeddings`):**
-   - Scaffold workspace package
-   - Provider interface (`embed(texts: string[]): Promise<number[][]>`)
-   - OpenAI provider (`text-embedding-3-small`, 1536 dims)
-   - Mock provider for tests
-   - Token counting helper (use `gpt-tokenizer` or `tiktoken`)
-   - Add `OPENAI_API_KEY` to env
+1. **Vector search service** (small, high value):
+   - `apps/api/src/modules/knowledge-bases/search.service.ts`
+   - `searchSimilar(workspaceId, kbId, queryText, topK?, minSimilarity?)`:
+     1. Embed query via `EmbeddingsProvider`
+     2. Raw SQL: `SELECT id, "documentId", content, 1 - (embedding <=> $1::vector) AS similarity FROM document_chunks JOIN documents ON ... WHERE "knowledgeBaseId" = $2 AND embedding IS NOT NULL ORDER BY embedding <=> $1 LIMIT $3`
+     3. Filter by minSimilarity in TypeScript (or in WHERE)
+   - Endpoint `POST /knowledge-bases/:id/search` returning chunks + similarity scores
+   - Live test: 2 documents in KB, query returns relevant ones first
 
-2. **Worker app scaffold (`apps/worker`):**
-   - Mirror apps/api structure (main.ts bootstrap, but standalone, no HTTP listener)
-   - Add to `nest-cli.json` projects + add `start:worker:dev` npm script
-   - Connect to Redis at localhost:6381 via BullMQ
+2. **Multipart file upload via MinIO** (defer further if too big):
+   - Add `@aws-sdk/client-s3` (works with MinIO)
+   - `MinioService` to upload streams
+   - `POST /knowledge-bases/:id/documents/file` (multipart)
+   - Worker reads file from MinIO via `sourceUrl`, parses by `mimeType` (PDF / TXT / MD), then chunks
+   - For PDF: use `pdf-parse`
 
-3. **Queue library (`libs/queue`):**
-   - BullMQ queue definitions: `document-processing`, `webhook-delivery`, `usage-aggregation` (placeholders)
-   - Type-safe job payload contracts
+3. **Run-mode improvements:**
+   - Single `npm run dev` that starts api + worker concurrently (use `concurrently` package)
+   - Update SETUP.md
 
-4. **DocumentsModule (in apps/api):**
-   - Upload via text body first (no file upload yet — defer multipart/MinIO to later)
-   - On create: enqueue document-processing job
-   - GET /knowledge-bases/:kbId/documents (list, filter by status)
-   - GET /knowledge-bases/:kbId/documents/:id (status + chunk count)
-   - DELETE /knowledge-bases/:kbId/documents/:id
+### Week 7-8 plan (after Phase 3 — Agent Runtime Engine)
 
-5. **Document processing worker:**
-   - Receives job → load document text → chunk (with overlap) → embed batch → write DocumentChunks with vector → mark Document INDEXED
-   - On error: mark FAILED with errorMessage
-
-6. **Vector search service (in libs/database or new libs/vector):**
-   - `searchSimilar(kbId, queryVector, topK, minSimilarity)` using pgvector cosine
-   - Returns chunks with similarity score
-
-7. **Live test** — create KB, upload text document, wait for indexing, search returns relevant chunks. Confirm cross-workspace isolation.
-
-### Phase 3 (Session 12) — Multipart file upload via MinIO
-- Defer until Phase 2 stable
+This is the BIG one — actual LLM orchestration:
+- LLM provider abstraction (OpenAI + Anthropic) — `libs/llm`
+- `RunsService.execute(agentId, threadId, input)` — the reasoning loop
+- Tool execution (HTTP tools fetching from URL templates)
+- Token counting + usage recording
+- Synchronous run for now; streaming + async in Week 9
+- This unlocks the actual product: an LLM-backed conversational agent that can call tools and search KBs
 
 ### Suggested opening message for next session
 
-> "Salam Abdullah! Pichli session mein KB schema + KB CRUD + Agent-KB attachments ho gaye. Aaj Phase 2 — embeddings library, worker app scaffold, BullMQ queue, document upload + indexing pipeline. Bara hissa hai. Pehle libs/embeddings banayenge (OpenAI provider), phir apps/worker standalone NestJS app, phir DocumentsModule with text upload. End mein indexing job chala kar dekhenge ke chunks DB mein land hote hain real embeddings ke saath. OPENAI_API_KEY chahiye hoga — aap ke paas hai? Otherwise mock provider se test karenge."
+> "Salam Abdullah! Pichli session mein full RAG indexing pipeline live ho gaya — upload text, worker process kare, chunks + embeddings DB mein. Aaj Phase 3 — vector search service. Embed user query → cosine search top-K chunks → return. Choti hissa, lekin jo retrieval ka asli payoff hai. Ready?"
 
 ### ⚠️ Reminders for Future Claude
 
@@ -784,11 +858,11 @@ feat(database): add KnowledgeBase, Document, DocumentChunk, AgentKB models
 ## 🔖 Commits So Far
 
 Target: 200+ atomic commits.
-Current: **~70 commits locally** (push status owned by Abdullah).
+Current: **~75 commits locally** (push status owned by Abdullah).
 
-S1 (3) + S2 (12) + S3 (8) + S4 (9) + S5 (5) + S6 (5) + S7 (9) + S8 (6) + S9 (7) + S10 (~5).
+S1 (3) + S2 (12) + S3 (8) + S4 (9) + S5 (5) + S6 (5) + S7 (9) + S8 (6) + S9 (7) + S10 (5) + S11 (~5).
 
-Health: ~35% of the way to 200+ goal after 10 sessions. Weeks 1-4 done + Weeks 5-6 Phase 1 done. On track.
+Health: ~37% of the way to 200+ goal after 11 sessions across 2 calendar days. Weeks 1-4 done; Weeks 5-6 mostly done. On track.
 
 ---
 
