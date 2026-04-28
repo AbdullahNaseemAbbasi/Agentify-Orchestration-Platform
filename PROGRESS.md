@@ -6,7 +6,7 @@
 
 ## 📅 Last Updated
 
-**2026-04-29** — End of Session 9 (**WEEK 4 COMPLETE** — Agents + Tools + attachments live)
+**2026-04-29** — End of Session 10 (Weeks 5-6 Phase 1 — KB schema + KB CRUD + Agent-KB attachments live)
 
 ---
 
@@ -21,7 +21,7 @@ Hum `AGENTIFY_SPEC.md` §22 ke 12-week roadmap follow kar rahe hain.
 | **Week 2**     | Prisma + database lib + first migration + /health/db   | ✅ Done (4 tables migrated, pgvector active, DB health green) |
 | **Week 3**     | Auth & Users (signup, login, JWT, refresh, RBAC)       | ✅ **DONE** — Phases A+B+C+D live and verified end-to-end with multi-user curl scenarios |
 | **Week 4**     | Agents & Tools                                          | ✅ **DONE** — schema migrated, Agents+Tools+attachments CRUD live and verified |
-| **Week 5–6**   | Knowledge Base & RAG                                    | 🟡 **READY TO START** — needs Document + DocumentChunk + KnowledgeBase models |
+| **Week 5–6**   | Knowledge Base & RAG                                    | 🟡 **IN PROGRESS** — schema + KB CRUD + Agent-KB attachments live; documents/embeddings/worker pending |
 | Week 3         | Auth & Users                                           | ⬜ Pending                                                      |
 | Week 4         | Agents & Tools                                         | ⬜ Pending                                                      |
 | Week 5–6       | Knowledge Base & RAG                                   | ⬜ Pending                                                      |
@@ -646,47 +646,121 @@ feat(database): add Agent, Tool, AgentTool models + ToolType enum
 
 ---
 
+---
+
+## 📚 Session 10 Log (2026-04-29 — KB schema + KB CRUD + Agent-KB attachments)
+
+### Kya Hua
+
+1. **Concept chapter** delivered: RAG (Retrieve + Augment + Generate), embeddings as semantic vectors, chunking with overlap, vector search with cosine distance, pgvector + HNSW index.
+
+2. **Schema additions:**
+   - `KnowledgeBase` (workspace-scoped, embeddingModel + chunkSize + chunkOverlap defaults)
+   - `Document` (kb-scoped) + `DocumentStatus` enum (PENDING/PROCESSING/INDEXED/FAILED)
+   - `DocumentChunk` with `Unsupported("vector(1536)")` embedding column
+   - `AgentKnowledgeBase` join table with per-attachment topK + minSimilarity
+   - Workspace.knowledgeBases and Agent.knowledgeBases relations
+
+3. **Migration `knowledge_bases`** generated via `prisma migrate diff` and applied. Manually appended raw SQL:
+   ```sql
+   CREATE INDEX "document_chunks_embedding_idx"
+     ON "document_chunks" USING hnsw ("embedding" vector_cosine_ops);
+   ```
+   Verified live: 12 tables in DB, HNSW index visible in `pg_indexes`.
+
+4. **KnowledgeBasesModule** built end-to-end:
+   - DTOs validate name, description, embeddingModel, chunkSize (100..8000), chunkOverlap (0..2000)
+   - Service enforces invariant `chunkOverlap < chunkSize` on both create and update
+   - Controller: GET, GET/:id, POST (writes any-member), PATCH, DELETE (OWNER/ADMIN only)
+   - Wired into AppModule
+
+5. **Agent-KB attachment endpoints** added to existing AgentsController:
+   - `GET /agents/:id/knowledge-bases` (any member)
+   - `POST /agents/:id/knowledge-bases` (writes; AttachKnowledgeBaseDto with optional topK/minSimilarity overrides)
+   - `DELETE /agents/:id/knowledge-bases/:kbId`
+   - Service additions: listKnowledgeBases, attachKnowledgeBase (verifies both agent and KB belong to workspace; P2002 → 409), detachKnowledgeBase (deleteMany → 404 if no row matched)
+
+6. **🎉 Live curl-based 10-step test passed:**
+   ```
+   ✅ KB created with custom chunkSize=1500
+   ✅ Invalid chunkOverlap >= chunkSize → 400 (invariant works)
+   ✅ Agent created, KB attached with custom topK=3 + minSim=0.8
+   ✅ List shows attachment params correctly
+   ✅ Duplicate attach → 409 Conflict
+   ✅ Invalid topK=101 → 400 (DTO range guard)
+   ✅ Detach → 204; subsequent list empty
+   ```
+
+### Concepts Locked This Session
+
+- ✅ RAG architecture (indexing pipeline vs retrieval pipeline)
+- ✅ Why fine-tuning loses to RAG (cost, freshness, scaling)
+- ✅ Embedding vectors as semantic similarity proxies
+- ✅ Chunking strategy + overlap rationale
+- ✅ pgvector + HNSW index for fast cosine search
+- ✅ Prisma `Unsupported("vector(1536)")` pattern for non-native column types
+- ✅ Adding raw SQL after Prisma-generated migration files (HNSW must be hand-written)
+- ✅ Per-attachment configuration (topK/minSimilarity on AgentKnowledgeBase, not on KB itself — different agents may want different recall behavior on the same KB)
+
+### Commits Made This Session (~5 atomic commits)
+
+```
+feat(agents): add agent-knowledge-base attachment endpoints
+feat(kb): add KnowledgeBasesModule with workspace-scoped CRUD
+feat(database): apply knowledge_bases migration with HNSW vector index
+feat(database): add KnowledgeBase, Document, DocumentChunk, AgentKB models
+```
+
+---
+
 ## 🎬 Next Session — Resume Point
 
 **Where we left off:** Abdullah ne quiz ke answers diye, feedback mila, "Acme" ka meaning clarified. User ne ghar jaane se pehle CLAUDE.md + PROGRESS.md update karne ko kaha hai.
 
-**Where we left off (end of Session 9):** **Week 4 fully complete!** Agents + Tools + attachments live with multi-tenancy enforced at every layer. Foundation now supports the actual product domain (LLM personas + their callable functions). Next = Weeks 5–6 (Knowledge Base & RAG).
+**Where we left off (end of Session 10):** Weeks 5-6 Phase 1 done — schema for KB+Document+Chunk+AgentKB applied (with HNSW index for vector search), KnowledgeBasesModule CRUD live, Agent-KB attachment endpoints live. Documents and embeddings still pending (need worker app + provider abstraction).
 
-### Next concrete steps (Weeks 5–6 — KB & RAG)
+### Next concrete steps (Weeks 5-6 Phase 2 — Documents + Embeddings + Worker)
 
-Spec §6 (schema), §8.6 (KB module), §8.7 (Documents), §11 (RAG pipeline).
+1. **Embeddings library (`libs/embeddings`):**
+   - Scaffold workspace package
+   - Provider interface (`embed(texts: string[]): Promise<number[][]>`)
+   - OpenAI provider (`text-embedding-3-small`, 1536 dims)
+   - Mock provider for tests
+   - Token counting helper (use `gpt-tokenizer` or `tiktoken`)
+   - Add `OPENAI_API_KEY` to env
 
-1. **Schema additions: KnowledgeBase, Document, DocumentChunk, AgentKnowledgeBase**
-   - `KnowledgeBase` — workspace-scoped, embeddingModel, chunkSize, chunkOverlap defaults
-   - `Document` — kb-scoped, status enum (PENDING/PROCESSING/INDEXED/FAILED), source/sourceUrl/mimeType
-   - `DocumentChunk` — chunkIndex, content (text), tokenCount, **embedding (Unsupported vector(1536))**
-   - `AgentKnowledgeBase` — m2m join with topK, minSimilarity per attachment
-   - Add raw SQL migration for HNSW index: `CREATE INDEX ON document_chunks USING hnsw (embedding vector_cosine_ops)`
+2. **Worker app scaffold (`apps/worker`):**
+   - Mirror apps/api structure (main.ts bootstrap, but standalone, no HTTP listener)
+   - Add to `nest-cli.json` projects + add `start:worker:dev` npm script
+   - Connect to Redis at localhost:6381 via BullMQ
 
-2. **KnowledgeBasesModule** (CRUD, workspace-scoped, role-guarded)
+3. **Queue library (`libs/queue`):**
+   - BullMQ queue definitions: `document-processing`, `webhook-delivery`, `usage-aggregation` (placeholders)
+   - Type-safe job payload contracts
 
-3. **DocumentsModule** — upload to MinIO + queue indexing
-   - Will need MinIO client (`@aws-sdk/client-s3` against MinIO endpoint)
-   - For now: text-based source first; file upload after BullMQ wiring
+4. **DocumentsModule (in apps/api):**
+   - Upload via text body first (no file upload yet — defer multipart/MinIO to later)
+   - On create: enqueue document-processing job
+   - GET /knowledge-bases/:kbId/documents (list, filter by status)
+   - GET /knowledge-bases/:kbId/documents/:id (status + chunk count)
+   - DELETE /knowledge-bases/:kbId/documents/:id
 
-4. **Embeddings library (`libs/embeddings`)**
-   - Provider interface (OpenAI text-embedding-3-small as default)
-   - Configuration via env (OPENAI_API_KEY)
+5. **Document processing worker:**
+   - Receives job → load document text → chunk (with overlap) → embed batch → write DocumentChunks with vector → mark Document INDEXED
+   - On error: mark FAILED with errorMessage
 
-5. **BullMQ wiring (`libs/queue`)**
-   - Connect to Redis at localhost:6381
-   - Document-processing queue + worker
-   - **Note:** The worker app from spec section 5 (apps/worker) hasn't been scaffolded yet — this is a good time
+6. **Vector search service (in libs/database or new libs/vector):**
+   - `searchSimilar(kbId, queryVector, topK, minSimilarity)` using pgvector cosine
+   - Returns chunks with similarity score
 
-6. **Vector search service** — `searchSimilar(kbId, query, topK)` using pgvector cosine distance
+7. **Live test** — create KB, upload text document, wait for indexing, search returns relevant chunks. Confirm cross-workspace isolation.
 
-7. **Agent-KB attachment** (POST /agents/:id/knowledge-bases)
-
-8. **Live test** — upload a doc → wait for indexing → search → verify scoped to workspace
+### Phase 3 (Session 12) — Multipart file upload via MinIO
+- Defer until Phase 2 stable
 
 ### Suggested opening message for next session
 
-> "Salam Abdullah! Week 4 done — Agents + Tools live. Aaj Weeks 5–6 ka start — Knowledge Base + RAG. Yeh bara hissa hai (~3 sessions ka): schema additions for KB+Document+Chunk, embeddings provider abstraction, BullMQ worker app, vector search via pgvector. Ready se phir start karein?"
+> "Salam Abdullah! Pichli session mein KB schema + KB CRUD + Agent-KB attachments ho gaye. Aaj Phase 2 — embeddings library, worker app scaffold, BullMQ queue, document upload + indexing pipeline. Bara hissa hai. Pehle libs/embeddings banayenge (OpenAI provider), phir apps/worker standalone NestJS app, phir DocumentsModule with text upload. End mein indexing job chala kar dekhenge ke chunks DB mein land hote hain real embeddings ke saath. OPENAI_API_KEY chahiye hoga — aap ke paas hai? Otherwise mock provider se test karenge."
 
 ### ⚠️ Reminders for Future Claude
 
@@ -710,11 +784,11 @@ Spec §6 (schema), §8.6 (KB module), §8.7 (Documents), §11 (RAG pipeline).
 ## 🔖 Commits So Far
 
 Target: 200+ atomic commits.
-Current: **~65 commits locally** (push status owned by Abdullah).
+Current: **~70 commits locally** (push status owned by Abdullah).
 
-S1 (3 bulk) + S2 (12) + S3 (8) + S4 (9) + S5 (5) + S6 (5) + S7 (9) + S8 (6) + S9 (~7).
+S1 (3) + S2 (12) + S3 (8) + S4 (9) + S5 (5) + S6 (5) + S7 (9) + S8 (6) + S9 (7) + S10 (~5).
 
-Health: ~33% of the way to 200+ goal after 9 sessions across 2 calendar days. Weeks 1–4 done. On track for 12-week MVP.
+Health: ~35% of the way to 200+ goal after 10 sessions. Weeks 1-4 done + Weeks 5-6 Phase 1 done. On track.
 
 ---
 
