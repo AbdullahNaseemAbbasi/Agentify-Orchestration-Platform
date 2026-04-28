@@ -6,7 +6,7 @@
 
 ## 📅 Last Updated
 
-**2026-04-29** — End of Session 7 (Week 3 Phases A+B+C done — full auth live)
+**2026-04-29** — End of Session 8 (**WEEK 3 COMPLETE** — Phase D RBAC + multi-tenancy live)
 
 ---
 
@@ -19,8 +19,8 @@ Hum `AGENTIFY_SPEC.md` §22 ke 12-week roadmap follow kar rahe hain.
 | **Pre-Week 1** | Project-level conceptual overview                      | ✅ Done (Ch 1–7 + workspace refresh + NestJS/TS intro)          |
 | **Week 1**     | Foundation: NestJS monorepo + Hello World API          | ✅ Done (skeleton running, lint+format, Docker stack live)     |
 | **Week 2**     | Prisma + database lib + first migration + /health/db   | ✅ Done (4 tables migrated, pgvector active, DB health green) |
-| **Week 3**     | Auth & Users (signup, login, JWT, refresh, RBAC)       | 🟢 **MOSTLY DONE** — Phases A+B+C live and curl-verified; only Phase D (Workspaces CRUD + RBAC roles guard) pending |
-| **Week 4**     | Agents & Tools                                          | ⬜ Pending                                                      |
+| **Week 3**     | Auth & Users (signup, login, JWT, refresh, RBAC)       | ✅ **DONE** — Phases A+B+C+D live and verified end-to-end with multi-user curl scenarios |
+| **Week 4**     | Agents & Tools                                          | 🟡 **READY TO START** — schema needs Agent + Tool models added |
 | Week 3         | Auth & Users                                           | ⬜ Pending                                                      |
 | Week 4         | Agents & Tools                                         | ⬜ Pending                                                      |
 | Week 5–6       | Knowledge Base & RAG                                   | ⬜ Pending                                                      |
@@ -499,47 +499,126 @@ chore: add @nestjs/jwt + @nestjs/passport + passport stack
 
 ---
 
+---
+
+## 📚 Session 8 Log (2026-04-29 — Phase D of Week 3, Week 3 COMPLETE)
+
+### Kya Hua
+
+1. **Concept chapter** delivered: multi-tenancy enforcement, 3-layer guard pattern (JwtAuthGuard → WorkspaceGuard → RolesGuard), workspace resolution strategies (header / subdomain / path param), `Reflector`-based decorator-metadata pattern.
+
+2. **Workspace DTOs:**
+   - `CreateWorkspaceDto` — name + optional slug (regex-validated lowercase/hyphens)
+   - `UpdateWorkspaceDto` — name only (slug immutable for stable URLs)
+   - `InviteMemberDto` — email + optional role
+   - `UpdateMemberDto` — role required (enum)
+
+3. **`WorkspacesService`** with multi-tenant scoping:
+   - `findAllForUser(userId)` — joins through `WorkspaceMember` so non-members never see anything
+   - `findByIdForUser` / `requireMembership` — throw `NotFoundException` (not 403) when caller isn't a member, to avoid leaking workspace existence
+   - `create` — Prisma `$transaction` (workspace + OWNER member); handles P2002 slug clashes
+   - `update` — requires OWNER/ADMIN
+   - `softDelete` — requires OWNER, sets `deletedAt`
+   - Members: `listMembers`, `inviteMember` (blocks OWNER role, blocks duplicate, looks up by email), `updateMemberRole` (blocks OWNER changes, blocks ADMIN-vs-ADMIN), `removeMember` (same role rules)
+
+4. **`apps/api/src/common/`** — shared cross-module utilities:
+   - `decorators/current-workspace.decorator.ts` — extracts typed `WorkspaceContext` from `req.workspace`
+   - `decorators/roles.decorator.ts` — `@Roles('OWNER', 'ADMIN')` via `SetMetadata`
+   - `guards/workspace.guard.ts` — resolves workspace from `:workspaceId` path param OR `X-Workspace-Id` header; validates UUID v4; calls `WorkspacesService.requireMembership`; attaches `WorkspaceContext` to `req.workspace`
+   - `guards/roles.guard.ts` — uses `Reflector.getAllAndOverride` to read role metadata; allows when no `@Roles` is set; throws 403 with the actual role name when blocked
+
+5. **`WorkspacesController`** — JWT-protected at the controller level, with member sub-routes adding `WorkspaceGuard` + `RolesGuard`:
+   - GET, POST, GET/:id, PATCH/:id, DELETE/:id (workspace CRUD)
+   - GET, POST, PATCH, DELETE under `/workspaces/:workspaceId/members` (members CRUD)
+   - `ParseUUIDPipe({ version: '4' })` rejects malformed UUIDs early with 400
+
+6. **`AppModule`** updated to import `WorkspacesModule`.
+
+7. **🎉 Live curl-based 14-step end-to-end test passed** — full multi-user multi-tenant scenario:
+
+   ```
+   ✅  Alice + Bob each signup → isolated workspaces, each is OWNER
+   ✅  Alice listing → sees only her workspace
+   ✅  Alice → Bob's workspace = 404 (existence not leaked)
+   ✅  Alice → Bob's members = 404 (WorkspaceGuard enforces)
+   ✅  Alice (OWNER) invites Bob → MEMBER row created
+   ✅  Bob listing → sees 2 workspaces (his OWNER + Alice's MEMBER)
+   ✅  Bob (MEMBER) tries to invite → 403 from RolesGuard
+   ✅  Bob (MEMBER) tries to update → 403 from service-level check
+   ✅  Alice promotes Bob to ADMIN
+   ✅  Bob (ADMIN) successfully invites Charlie
+   ✅  Bob (ADMIN) tries to DELETE workspace → 403 (only OWNER)
+   ✅  Bob tries to invite as OWNER role → 403 (blocked at service)
+   ✅  Alice lists members → Alice OWNER, Bob ADMIN, Charlie MEMBER
+   ```
+
+### Concepts Locked This Session
+
+- ✅ Multi-tenancy enforcement at multiple layers (controller, guard, service)
+- ✅ "Return 404 not 403 when caller isn't a member" — existence leak prevention
+- ✅ NestJS guard ordering: `@UseGuards(JwtAuthGuard, WorkspaceGuard, RolesGuard)` runs in declared order
+- ✅ Decorator metadata via `SetMetadata` + `Reflector.getAllAndOverride`
+- ✅ Service-level role checks as defense-in-depth even with HTTP-layer RolesGuard
+- ✅ Hybrid workspace resolution (path param `:workspaceId` for explicit routes, `X-Workspace-Id` header for global routes)
+- ✅ `ParseUUIDPipe` for early input validation
+- ✅ Atomic role-management transactions (workspace create + OWNER member)
+- ✅ "Cannot promote to OWNER" pattern — OWNER is set only at workspace creation, transferred separately
+
+### Commits Made This Session (~6 atomic commits)
+
+```
+feat(workspaces): add member management endpoints with RBAC
+feat(common): add @Roles decorator and RolesGuard
+feat(common): add WorkspaceGuard and @CurrentWorkspace decorator
+feat(workspaces): add WorkspacesController and WorkspacesModule
+feat(workspaces): add WorkspacesService with multi-tenant scoping
+feat(workspaces): add CreateWorkspaceDto and UpdateWorkspaceDto
+```
+
+---
+
 ## 🎬 Next Session — Resume Point
 
 **Where we left off:** Abdullah ne quiz ke answers diye, feedback mila, "Acme" ka meaning clarified. User ne ghar jaane se pehle CLAUDE.md + PROGRESS.md update karne ko kaha hai.
 
-**Where we left off (end of Session 7):** Phases A+B+C of Week 3 are live. Full auth flow (signup → /users/me → login → refresh → logout) verified end-to-end via curl with all security patterns confirmed working. Next = Phase D (Workspaces CRUD + RBAC).
+**Where we left off (end of Session 8):** **Week 3 fully complete!** Auth + Users + Workspaces + RBAC end-to-end live and stress-tested with a 14-step multi-user curl scenario. Foundation is rock-solid for building feature modules. Next = Week 4 (Agents + Tools).
 
-### Next concrete steps (Phase D — Workspaces + RBAC)
+### Next concrete steps (Week 4 — Agents & Tools)
 
-1. **Workspaces module (`apps/api/src/modules/workspaces`):**
-   - `dto/create-workspace.dto.ts`, `dto/update-workspace.dto.ts`
-   - `workspaces.service.ts`: `findAllForUser(userId)`, `findById(id, userId)`, `create(dto, ownerId)`, `update`, `softDelete`
-   - `workspaces.controller.ts`: GET /workspaces, POST /workspaces, GET /workspaces/:id, PATCH /workspaces/:id, DELETE /workspaces/:id
-   - All routes JWT-protected
-   - **Multi-tenancy enforcement:** every query filters by user's membership
+Spec §6 (schema), §8.4 (Agents), §8.5 (Tools), §12 (Tool execution).
 
-2. **Workspace context decorator:**
-   - `@CurrentWorkspace()` decorator that resolves the workspace from a header (`X-Workspace-Id`) or from the route param
-   - `WorkspaceContext` interface with `id`, `slug`, `role`
-   - `WorkspaceGuard` that validates user is a member and attaches role to request
+1. **Schema migration: add Agent, Tool, AgentTool models**
+   - `Agent` — name, description, systemPrompt, model, provider, temperature, maxTokens, topP, responseFormat, toolChoice, maxSteps, isActive, soft-delete
+   - `Tool` — name, description, parameters (JSON Schema), type (HTTP/BUILT_IN/MCP), HTTP fields, timeoutMs
+   - `AgentTool` — many-to-many join
+   - Generate migration via `prisma migrate diff` workflow (NOT `migrate dev`)
 
-3. **RBAC roles:**
-   - `@Roles(OWNER, ADMIN)` decorator using `Reflector`
-   - `RolesGuard` reads metadata, checks `req.workspace.role` against allowed list
-   - Apply combination `@UseGuards(JwtAuthGuard, WorkspaceGuard, RolesGuard)` on protected routes
+2. **AgentsModule (`apps/api/src/modules/agents`)**
+   - `dto/create-agent.dto.ts`, `dto/update-agent.dto.ts`
+   - `agents.service.ts` — workspace-scoped CRUD (every query filters `workspaceId`)
+   - `agents.controller.ts` — under `/v1/agents` per spec; JWT + WorkspaceGuard
+   - `@Roles('OWNER', 'ADMIN', 'MEMBER')` for write operations (VIEWER read-only)
 
-4. **Workspace member management endpoints (later in week):**
-   - POST /workspaces/:id/members (invite by email)
-   - DELETE /workspaces/:id/members/:userId
-   - PATCH /workspaces/:id/members/:userId (change role)
+3. **ToolsModule (`apps/api/src/modules/tools`)**
+   - DTOs with validation for HTTP tool fields (URL, method, body templates)
+   - JSON Schema validation of `parameters` field at write time (use `ajv`)
+   - Workspace-scoped CRUD
 
-5. **Test live:** curl flow that confirms a non-member of a workspace gets 403, an OWNER can change roles, an ADMIN cannot delete the workspace.
+4. **Agent-Tool attachment**
+   - `POST /v1/agents/:id/tools` — attach
+   - `DELETE /v1/agents/:id/tools/:toolId` — detach
+   - `GET /v1/agents/:id/tools` — list attached
 
-### Week 4 plan (after Phase D)
-
-- Agents CRUD (spec §8.4)
-- Tools CRUD (spec §8.5)
-- Agent-Tool attachment
+5. **Live test**
+   - Signup → create workspace (already auto-created)
+   - Create an Agent
+   - Create 1–2 Tools
+   - Attach tools to agent
+   - Verify another workspace cannot see them
 
 ### Suggested opening message for next session
 
-> "Salam Abdullah! Pichli session mein full auth flow live ho gaya — signup, login, refresh rotation, logout, JWT-protected /users/me, sab curl se verified. Aaj Phase D — Workspaces CRUD + RBAC. Multi-tenancy enforce karenge: har query workspaceId filter, member check, role-based access. End mein curl se confirm karenge ke ek user doosre user ke workspace ko access nahi kar sakta. Ready?"
+> "Salam Abdullah! Week 3 fully done — auth, users, workspaces, RBAC sab solid hai. Aaj Week 4 — Agents & Tools. Pehle Prisma schema mein Agent + Tool models add karenge, migration chalayenge, phir AgentsModule + ToolsModule banayenge with workspace-scoped queries. End mein curl se: ek workspace mein agent banao, tool attach karo, doosre workspace ke user se 404 verify karo. Ready?"
 
 ### ⚠️ Reminders for Future Claude
 
@@ -563,11 +642,11 @@ chore: add @nestjs/jwt + @nestjs/passport + passport stack
 ## 🔖 Commits So Far
 
 Target: 200+ atomic commits.
-Current: **~52 commits locally** (push status owned by Abdullah).
+Current: **~58 commits locally** (push status owned by Abdullah).
 
-S1 (3 bulk) + S2 (12) + S3 (8) + S4 (9) + S5 (5) + S6 (5) + S7 (~9).
+S1 (3 bulk) + S2 (12) + S3 (8) + S4 (9) + S5 (5) + S6 (5) + S7 (9) + S8 (~6).
 
-Health: ~26% of the way to 200+ goal after 7 sessions across 2 calendar days. Strong pace; comfortably on track for 12-week MVP.
+Health: ~29% of the way to 200+ goal after 8 sessions across 2 calendar days. Week 3 done — major auth+RBAC foundation in the bank. On track for 12-week MVP.
 
 ---
 
