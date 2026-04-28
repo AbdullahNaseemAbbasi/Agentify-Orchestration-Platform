@@ -6,7 +6,7 @@
 
 ## 📅 Last Updated
 
-**2026-04-29** — End of Session 13 (Week 7-8 Phase A — libs/llm with OpenAI+Anthropic+Mock providers live)
+**2026-04-29** — End of Session 14 (Week 7-8 Phase B — Thread/Message/Run schema + ThreadsModule + MessagesModule live)
 
 ---
 
@@ -22,7 +22,7 @@ Hum `AGENTIFY_SPEC.md` §22 ke 12-week roadmap follow kar rahe hain.
 | **Week 3**     | Auth & Users (signup, login, JWT, refresh, RBAC)       | ✅ **DONE** — Phases A+B+C+D live and verified end-to-end with multi-user curl scenarios |
 | **Week 4**     | Agents & Tools                                          | ✅ **DONE** — schema migrated, Agents+Tools+attachments CRUD live and verified |
 | **Week 5–6**   | Knowledge Base & RAG                                    | ✅ **DONE** — full pipeline live: KB CRUD + documents + embeddings + worker + indexing + vector search verified end-to-end. Only multipart file upload deferred (text upload covers learning). |
-| **Week 7–8**   | Agent Runtime Engine                                    | 🟡 **IN PROGRESS** — Phase A done (libs/llm with 3 providers); B (Threads/Messages), C (RunsService loop), D (sync run endpoint) pending |
+| **Week 7–8**   | Agent Runtime Engine                                    | 🟡 **IN PROGRESS** — Phases A + B done (libs/llm + Thread/Message/Run schema + Threads/Messages modules); C (RunsService loop) and D (sync run endpoint) pending |
 | Week 3         | Auth & Users                                           | ⬜ Pending                                                      |
 | Week 4         | Agents & Tools                                         | ⬜ Pending                                                      |
 | Week 5–6       | Knowledge Base & RAG                                   | ⬜ Pending                                                      |
@@ -894,42 +894,106 @@ feat(llm): scaffold libs/llm package and define provider interface
 
 ---
 
+---
+
+## 📚 Session 14 Log (2026-04-29 — Week 7-8 Phase B)
+
+### Kya Hua
+
+1. **Schema additions** (Thread, Message, Run + 2 enums):
+   - Added `Thread`, `Message`, `Run` models with full FK relations
+   - `MessageRole` (SYSTEM/USER/ASSISTANT/TOOL) and `RunStatus` (7 states)
+   - Workspace + Agent now expose `threads[]` and `runs[]`
+   - Cascade delete from workspace + agent; SetNull on `Message.runId`
+   - Migration generated via `prisma migrate diff` and applied — DB now has 15 tables
+
+2. **ThreadsModule:**
+   - DTOs validate agentId UUID + optional title/externalId/metadata
+   - Service.create verifies the agent belongs to the caller's workspace and is not soft-deleted (404 otherwise)
+   - findAll supports optional `?agentId` query filter
+   - Standard JwtAuthGuard + WorkspaceGuard + RolesGuard stack
+
+3. **MessagesModule (read-only):**
+   - GET `/threads/:threadId/messages` returns oldest-first
+   - Workspace ownership enforced through the parent thread
+   - Direct message creation intentionally NOT exposed — messages flow through RunsService (Phase C)
+
+4. **🎉 Live 12-step verification:**
+   ```
+   ✅ Thread created with agentId scoping
+   ✅ Bad agentId → 404 with clear message
+   ✅ List + ?agentId filter
+   ✅ Patch updates title only
+   ✅ Empty messages initially; manual SQL insert visible via API
+   ✅ Bob (different workspace) → 404 on Alice's thread
+   ✅ Thread delete cascades messages
+   ```
+
+### Concepts Locked This Session
+
+- ✅ Thread vs Run vs Message lifecycle
+- ✅ Why MessagesModule is read-only at API surface (write path goes through reasoning loop)
+- ✅ Run state machine (PENDING → IN_PROGRESS → COMPLETED/FAILED/CANCELLED/TIMEOUT)
+- ✅ `Message.runId` ON DELETE SetNull pattern (preserve history when run records age out)
+- ✅ Optional `?agentId` query filter convention
+- ✅ Cascade-delete behavior at FK level (no manual cleanup needed)
+
+### Commits Made This Session (~5 atomic commits)
+
+```
+feat(messages): add MessagesModule with read-only thread message listing
+feat(threads): add ThreadsModule with workspace-scoped CRUD
+feat(database): apply threads_messages_runs migration
+feat(database): add Thread, Message, Run models + enums
+```
+
+---
+
 ## 🎬 Next Session — Resume Point
 
 **Where we left off:** Abdullah ne quiz ke answers diye, feedback mila, "Acme" ka meaning clarified. User ne ghar jaane se pehle CLAUDE.md + PROGRESS.md update karne ko kaha hai.
 
-**Where we left off (end of Session 13):** Phase A of Week 7-8 done — libs/llm with OpenAI/Anthropic/Mock providers + service registry + global module is built and sanity-tested. Foundations in place to build the actual reasoning loop. Next = Phase B (Threads + Messages models).
+**Where we left off (end of Session 14):** Phases A + B of Week 7-8 done. libs/llm has 3 providers + service. Schema includes Thread/Message/Run with all enums. Threads + Messages modules live, multi-tenancy verified. Next = **Phase C — RunsService reasoning loop** (the heart of an "agent").
 
-### Next concrete steps (Week 7-8 Phase B — Threads + Messages + Runs)
+### Next concrete steps (Week 7-8 Phase C — Reasoning Loop)
 
-1. **Schema additions:**
-   - `Thread` model (workspaceId, agentId, externalId?, title?, metadata?)
-   - `Message` model (threadId, runId?, role enum, content, toolCalls?, toolCallId?, name?, metadata?)
-   - `Run` model (workspaceId, agentId, threadId, status, started/completed/failedAt, errorCode/message, token counts, estimatedCostUsd, stepCount, model, provider, metadata)
-   - `MessageRole` enum (SYSTEM/USER/ASSISTANT/TOOL)
-   - `RunStatus` enum (PENDING/IN_PROGRESS/REQUIRES_ACTION/COMPLETED/FAILED/CANCELLED/TIMEOUT)
-   - Migration via `prisma migrate diff` workflow
+1. **RunsService.execute(workspaceId, agentId, threadId, userInput):**
+   - Create Run row with status=IN_PROGRESS
+   - Load: agent config + attached tools + attached KBs + thread message history
+   - (optional) RAG: embed userInput + search KBs → prepend top hits as system context
+   - Build LlmMessage[] for the LLM call (system + history + new user msg)
+   - Loop up to `agent.maxSteps`:
+     - Call `LlmService.complete(provider, {model, messages, tools, ...})`
+     - If finishReason=tool_calls → execute each tool (HttpToolExecutor) → append tool results to messages → loop
+     - Else (finishReason=stop) → break
+   - Persist all messages with runId, accumulate token usage on the Run row
+   - Mark COMPLETED with final stepCount + totalTokens; or FAILED with errorMessage
 
-2. **ThreadsModule:**
-   - DTOs: CreateThreadDto (agentId, externalId?, title?, metadata?), UpdateThreadDto
-   - Service: workspace-scoped CRUD (every query filters workspaceId)
-   - Controller: GET/POST/GET:id/PATCH:id/DELETE:id under `/threads`
+2. **HttpToolExecutor:**
+   - Substitute `{{var}}` placeholders in URL template + body
+   - fetch with timeoutMs
+   - Capture status + response body (string-trimmed if huge)
+   - Auth header injection (bearer / api_key / basic)
+   - Future: built-in tools (web_search, code_exec) and MCP
 
-3. **MessagesModule:**
-   - Read-only: GET /threads/:threadId/messages
-   - Direct user-created messages discouraged for now — messages flow comes through RunsService
+3. **Token estimation helper:**
+   - For mock provider, the model returns approximate counts
+   - For real providers, trust the API-returned `usage`
+   - Cost calculation: keep simple table per model (deferred — for now `estimatedCostUsd` stays 0)
 
-### Phase C plan (Session 15) — Reasoning loop
-- RunsService.execute(agentId, threadId, input)
-- HttpToolExecutor for HTTP tools
-- Token counting
+4. **Run module structure:**
+   - `runs.service.ts`, `runs.module.ts`
+   - Thin controller in Phase D
 
 ### Phase D plan (Session 16) — Sync run endpoint
-- POST /agents/:id/runs
+- POST `/agents/:id/runs` with `{thread_id?, input}` body
+- Auto-create thread if `thread_id` omitted
+- Return final assistant message + run summary
+- Live test with mock provider (full loop verifiable without an API key)
 
 ### Suggested opening message for next session
 
-> "Salam Abdullah! Phase A done — libs/llm with all 3 providers chal raha. Aaj Phase B — Thread + Message + Run schema additions, migration, ThreadsModule + MessagesModule. End mein DB mein threads create kar saktay ho ge. Ready?"
+> "Salam Abdullah! Phases A+B done — LLM abstraction + Thread/Message/Run schema + modules live. Aaj Phase C — RunsService reasoning loop. Yeh project ka core hai. RunsService.execute will: load agent config + history + tools + KBs, call LLM in loop, execute tools when needed, persist messages with token counts. End mein curl se test karne ke liye Phase D ka run endpoint chahiye hoga (agle session). Ready?"
 
 ### ⚠️ Reminders for Future Claude
 
@@ -953,11 +1017,11 @@ feat(llm): scaffold libs/llm package and define provider interface
 ## 🔖 Commits So Far
 
 Target: 200+ atomic commits.
-Current: **~82 commits locally** (push status owned by Abdullah).
+Current: **~88 commits locally** (push status owned by Abdullah).
 
-S1-S12 totals + S13 (~5).
+S1-S13 totals + S14 (~5).
 
-Health: ~41% of the way to 200+ goal after 13 sessions across 2 calendar days. Weeks 1-6 done; Week 7-8 Phase A done. On track for 12-week MVP.
+Health: ~44% of the way to 200+ goal after 14 sessions across 2 calendar days. Weeks 1-6 done; Week 7-8 Phases A + B done. On track for 12-week MVP.
 
 ---
 
