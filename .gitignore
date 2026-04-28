@@ -31,6 +31,10 @@ out/
 .env.test
 .env.*.local
 
+# JWT signing keys — NEVER commit
+keys/
+*.pem
+
 # ============================================
 # Logs
 # ============================================
