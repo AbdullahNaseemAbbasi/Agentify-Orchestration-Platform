@@ -6,7 +6,7 @@
 
 ## 📅 Last Updated
 
-**2026-04-29** — End of Session 12 (**WEEKS 5-6 COMPLETE** — Vector search service live)
+**2026-04-29** — End of Session 13 (Week 7-8 Phase A — libs/llm with OpenAI+Anthropic+Mock providers live)
 
 ---
 
@@ -22,7 +22,7 @@ Hum `AGENTIFY_SPEC.md` §22 ke 12-week roadmap follow kar rahe hain.
 | **Week 3**     | Auth & Users (signup, login, JWT, refresh, RBAC)       | ✅ **DONE** — Phases A+B+C+D live and verified end-to-end with multi-user curl scenarios |
 | **Week 4**     | Agents & Tools                                          | ✅ **DONE** — schema migrated, Agents+Tools+attachments CRUD live and verified |
 | **Week 5–6**   | Knowledge Base & RAG                                    | ✅ **DONE** — full pipeline live: KB CRUD + documents + embeddings + worker + indexing + vector search verified end-to-end. Only multipart file upload deferred (text upload covers learning). |
-| **Week 7–8**   | Agent Runtime Engine                                    | 🟡 **READY TO START** — needs libs/llm + RunsService reasoning loop |
+| **Week 7–8**   | Agent Runtime Engine                                    | 🟡 **IN PROGRESS** — Phase A done (libs/llm with 3 providers); B (Threads/Messages), C (RunsService loop), D (sync run endpoint) pending |
 | Week 3         | Auth & Users                                           | ⬜ Pending                                                      |
 | Week 4         | Agents & Tools                                         | ⬜ Pending                                                      |
 | Week 5–6       | Knowledge Base & RAG                                   | ⬜ Pending                                                      |
@@ -847,49 +847,89 @@ feat(kb): add SearchService for vector similarity search
 
 ---
 
+---
+
+## 📚 Session 13 Log (2026-04-29 — Week 7-8 Phase A: libs/llm)
+
+### Kya Hua
+
+1. **Concept** delivered: anatomy of an LLM completions request/response, OpenAI Chat Completions vs Anthropic Messages API differences (system prompt placement, tool-call shape, auth header, token field names).
+
+2. **`libs/llm` package** with full provider abstraction:
+   - **`llm.interface.ts`** — `LlmProvider`, `LlmMessage`, `LlmToolCall`, `LlmToolDefinition`, `LlmCompletionRequest`, `LlmCompletionResponse`, `LlmUsage`, `LlmFinishReason`. Internal model mirrors OpenAI shape (de facto standard).
+   - **`MockLlmProvider`** — deterministic, no API key. If user message contains "use tool" and tools are present, emits a tool_call for the first tool. Otherwise echoes "[mock] You said: …".
+   - **`OpenAILlmProvider`** — fetch against `/v1/chat/completions`; tools rewritten as `{type: 'function', function: {...}}`; native passthrough since internal types already match.
+   - **`AnthropicLlmProvider`** — adapts to `/v1/messages`: `splitSystem` extracts role:'system' messages into top-level `system` field; `toAnthropicMessage` rebuilds tool calls into content blocks (`text` + `tool_use`); tool-result responses become role:'user' with `tool_result` block; uses `x-api-key` + `anthropic-version: 2023-06-01`; defaults `max_tokens` to 4096 (required by API).
+
+3. **`LlmService`** — provider registry:
+   - At construction inspects env: registers OpenAI when `OPENAI_API_KEY` set, Anthropic when `ANTHROPIC_API_KEY` set
+   - `providerFor(key)` resolves via lowercase agent.provider; falls back to MockLlmProvider with warning when no credentials match
+   - `complete(providerKey, request)` validates required fields + delegates
+
+4. **`LlmModule`** marked `@Global()` so any feature module can inject `LlmService` without re-importing.
+
+5. **🎉 Sanity-tested live** via temporary scratch script:
+   - Simple completion via mock → echoed user input
+   - Tool-call trigger ("use tool") → `toolCalls` populated, `finish=tool_calls`
+   - Provider fallback (request anthropic without key) → graceful drop to mock with warning
+
+### Concepts Locked This Session
+
+- ✅ LLM "Chat Completions" anatomy (messages array, role types, tool calls)
+- ✅ Why OpenAI shape became internal standard (industry de facto)
+- ✅ Anthropic adaptation patterns (system as field, tool_use blocks)
+- ✅ Provider-registry pattern with graceful fallback to mock
+- ✅ Native fetch over SDK dependencies (smaller install, single endpoint)
+- ✅ `finish_reason` / `stop_reason` normalization
+
+### Commits Made This Session (~5 atomic commits)
+
+```
+feat(llm): add LlmService registry and global LlmModule
+feat(llm): add AnthropicLlmProvider adapting to Messages API
+feat(llm): add OpenAILlmProvider using fetch against /chat/completions
+feat(llm): add MockLlmProvider for keyless local development
+feat(llm): scaffold libs/llm package and define provider interface
+```
+
+---
+
 ## 🎬 Next Session — Resume Point
 
 **Where we left off:** Abdullah ne quiz ke answers diye, feedback mila, "Acme" ka meaning clarified. User ne ghar jaane se pehle CLAUDE.md + PROGRESS.md update karne ko kaha hai.
 
-**Where we left off (end of Session 12):** **Weeks 5-6 fully complete!** Full RAG pipeline including search is live and verified. Upload → index → search round-trip works. Multipart file upload deferred — text-source covers everything for the learning track. Next = **Week 7-8: Agent Runtime Engine** (the actual LLM orchestration, the heart of Agentify).
+**Where we left off (end of Session 13):** Phase A of Week 7-8 done — libs/llm with OpenAI/Anthropic/Mock providers + service registry + global module is built and sanity-tested. Foundations in place to build the actual reasoning loop. Next = Phase B (Threads + Messages models).
 
-### Next concrete steps (Week 7-8 — Agent Runtime)
+### Next concrete steps (Week 7-8 Phase B — Threads + Messages + Runs)
 
-This is the BIGGEST week of the project. Spec §10 is the reference. Plan in 4 phases:
+1. **Schema additions:**
+   - `Thread` model (workspaceId, agentId, externalId?, title?, metadata?)
+   - `Message` model (threadId, runId?, role enum, content, toolCalls?, toolCallId?, name?, metadata?)
+   - `Run` model (workspaceId, agentId, threadId, status, started/completed/failedAt, errorCode/message, token counts, estimatedCostUsd, stepCount, model, provider, metadata)
+   - `MessageRole` enum (SYSTEM/USER/ASSISTANT/TOOL)
+   - `RunStatus` enum (PENDING/IN_PROGRESS/REQUIRES_ACTION/COMPLETED/FAILED/CANCELLED/TIMEOUT)
+   - Migration via `prisma migrate diff` workflow
 
-**Phase A — LLM provider abstraction (`libs/llm`):**
-- Provider interface: `complete({messages, tools?, temperature, maxTokens, ...}) -> {message, usage}`
-- OpenAI provider (`/v1/chat/completions` via fetch, no SDK)
-- Anthropic provider (`/v1/messages`, slightly different request shape)
-- Mock provider for tests
-- `LlmModule` resolves provider per agent.provider field
+2. **ThreadsModule:**
+   - DTOs: CreateThreadDto (agentId, externalId?, title?, metadata?), UpdateThreadDto
+   - Service: workspace-scoped CRUD (every query filters workspaceId)
+   - Controller: GET/POST/GET:id/PATCH:id/DELETE:id under `/threads`
 
-**Phase B — Threads + Messages:**
-- Add `Thread` and `Message` models (already in spec §6)
-- Migration via `prisma migrate diff`
-- ThreadsModule, MessagesModule (workspace-scoped CRUD)
+3. **MessagesModule:**
+   - Read-only: GET /threads/:threadId/messages
+   - Direct user-created messages discouraged for now — messages flow comes through RunsService
 
-**Phase C — Reasoning loop (RunsService):**
-- `execute(agentId, threadId, input)`:
-  1. Create Run (status PENDING)
-  2. Load agent config + thread history + attached tools + KB results
-  3. Loop up to maxSteps:
-     - Call LLM with messages + tool definitions
-     - If tool call → execute (HTTP tool fetch) → append result → loop
-     - If final message → break
-  4. Persist messages + token usage + Run status
-- HTTP tool execution (`HttpToolExecutor` — substitutes URL template params, makes fetch with timeout)
-- Token counting via `tiktoken` or estimation
+### Phase C plan (Session 15) — Reasoning loop
+- RunsService.execute(agentId, threadId, input)
+- HttpToolExecutor for HTTP tools
+- Token counting
 
-**Phase D — Sync run endpoint:**
-- `POST /agents/:id/runs` returns final message after loop completes
-- Live test: create agent + KB + tool, run conversation, see tool calls + RAG context in messages
-
-**Streaming + async via BullMQ deferred to Week 9.**
+### Phase D plan (Session 16) — Sync run endpoint
+- POST /agents/:id/runs
 
 ### Suggested opening message for next session
 
-> "Salam Abdullah! Weeks 5-6 done — RAG pipeline full ready. Aaj Week 7-8 ka start — Agent Runtime Engine. Yeh project ka core hai. Bara hai — 4 phases mein todenge. Aaj Phase A — libs/llm provider abstraction (OpenAI + Anthropic + mock). Phir Threads/Messages, phir reasoning loop. Real LLM call karne ke liye `OPENAI_API_KEY` ya `ANTHROPIC_API_KEY` chahiye hoga — aap ke paas hai? Otherwise mock se progress karenge."
+> "Salam Abdullah! Phase A done — libs/llm with all 3 providers chal raha. Aaj Phase B — Thread + Message + Run schema additions, migration, ThreadsModule + MessagesModule. End mein DB mein threads create kar saktay ho ge. Ready?"
 
 ### ⚠️ Reminders for Future Claude
 
@@ -913,11 +953,11 @@ This is the BIGGEST week of the project. Spec §10 is the reference. Plan in 4 p
 ## 🔖 Commits So Far
 
 Target: 200+ atomic commits.
-Current: **~77 commits locally** (push status owned by Abdullah).
+Current: **~82 commits locally** (push status owned by Abdullah).
 
-S1 (3) + S2 (12) + S3 (8) + S4 (9) + S5 (5) + S6 (5) + S7 (9) + S8 (6) + S9 (7) + S10 (5) + S11 (5) + S12 (~2).
+S1-S12 totals + S13 (~5).
 
-Health: ~38% of the way to 200+ goal after 12 sessions across 2 calendar days. Weeks 1-6 done. On track for 12-week MVP.
+Health: ~41% of the way to 200+ goal after 13 sessions across 2 calendar days. Weeks 1-6 done; Week 7-8 Phase A done. On track for 12-week MVP.
 
 ---
 
