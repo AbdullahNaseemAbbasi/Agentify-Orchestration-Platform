@@ -4,6 +4,7 @@ import { DatabaseModule } from '@agentify/database';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { HealthModule } from './health/health.module';
+import { AgentsModule } from './modules/agents/agents.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { UsersModule } from './modules/users/users.module';
 import { WorkspacesModule } from './modules/workspaces/workspaces.module';
@@ -16,6 +17,7 @@ import { WorkspacesModule } from './modules/workspaces/workspaces.module';
     UsersModule,
     AuthModule,
     WorkspacesModule,
+    AgentsModule,
   ],
   controllers: [AppController],
   providers: [AppService],
