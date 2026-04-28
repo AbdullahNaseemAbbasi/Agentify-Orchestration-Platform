@@ -19,7 +19,11 @@
     "lint": "eslint \"{apps,libs}/**/*.ts\" --fix",
     "lint:check": "eslint \"{apps,libs}/**/*.ts\"",
     "format": "prettier --write \"{apps,libs}/**/*.{ts,json,md}\" \"*.{ts,json,md}\"",
-    "format:check": "prettier --check \"{apps,libs}/**/*.{ts,json,md}\" \"*.{ts,json,md}\""
+    "format:check": "prettier --check \"{apps,libs}/**/*.{ts,json,md}\" \"*.{ts,json,md}\"",
+    "prisma:generate": "prisma generate --schema=libs/database/prisma/schema.prisma",
+    "prisma:migrate": "prisma migrate dev --schema=libs/database/prisma/schema.prisma",
+    "prisma:migrate:deploy": "prisma migrate deploy --schema=libs/database/prisma/schema.prisma",
+    "prisma:studio": "prisma studio --schema=libs/database/prisma/schema.prisma"
   },
   "workspaces": [
     "apps/*",
@@ -29,6 +33,7 @@
     "@nestjs/common": "^10.4.15",
     "@nestjs/core": "^10.4.15",
     "@nestjs/platform-express": "^10.4.15",
+    "@prisma/client": "^5.22.0",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1"
   },
@@ -43,6 +48,7 @@
     "eslint-config-prettier": "^9.1.0",
     "eslint-plugin-prettier": "^5.2.1",
     "prettier": "^3.4.2",
+    "prisma": "^5.22.0",
     "source-map-support": "^0.5.21",
     "ts-loader": "^9.5.1",
     "ts-node": "^10.9.2",
