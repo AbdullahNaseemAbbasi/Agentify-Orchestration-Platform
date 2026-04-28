@@ -6,7 +6,7 @@
 
 ## 📅 Last Updated
 
-**2026-04-29** — End of Session 8 (**WEEK 3 COMPLETE** — Phase D RBAC + multi-tenancy live)
+**2026-04-29** — End of Session 9 (**WEEK 4 COMPLETE** — Agents + Tools + attachments live)
 
 ---
 
@@ -20,7 +20,8 @@ Hum `AGENTIFY_SPEC.md` §22 ke 12-week roadmap follow kar rahe hain.
 | **Week 1**     | Foundation: NestJS monorepo + Hello World API          | ✅ Done (skeleton running, lint+format, Docker stack live)     |
 | **Week 2**     | Prisma + database lib + first migration + /health/db   | ✅ Done (4 tables migrated, pgvector active, DB health green) |
 | **Week 3**     | Auth & Users (signup, login, JWT, refresh, RBAC)       | ✅ **DONE** — Phases A+B+C+D live and verified end-to-end with multi-user curl scenarios |
-| **Week 4**     | Agents & Tools                                          | 🟡 **READY TO START** — schema needs Agent + Tool models added |
+| **Week 4**     | Agents & Tools                                          | ✅ **DONE** — schema migrated, Agents+Tools+attachments CRUD live and verified |
+| **Week 5–6**   | Knowledge Base & RAG                                    | 🟡 **READY TO START** — needs Document + DocumentChunk + KnowledgeBase models |
 | Week 3         | Auth & Users                                           | ⬜ Pending                                                      |
 | Week 4         | Agents & Tools                                         | ⬜ Pending                                                      |
 | Week 5–6       | Knowledge Base & RAG                                   | ⬜ Pending                                                      |
@@ -577,48 +578,115 @@ feat(workspaces): add CreateWorkspaceDto and UpdateWorkspaceDto
 
 ---
 
+---
+
+## 📚 Session 9 Log (2026-04-29 — Week 4 Agents & Tools)
+
+### Kya Hua
+
+1. **Schema migration `agents_and_tools`:**
+   - Added `Agent`, `Tool`, `AgentTool` models + `ToolType` enum (HTTP/BUILT_IN/MCP)
+   - Required creating a `agentify_shadow` Postgres database (Prisma needs it for `migrate diff --from-migrations`)
+   - **Gotcha:** `rm -rf libs/database/prisma/migrations/2026*` accidentally deleted the init migration file. Restored from git, regenerated cleanly.
+   - Verified live: 8 tables in DB, 2 migrations applied.
+
+2. **AgentsModule:**
+   - DTOs validate sampling params (temperature 0..2, topP 0..1, maxTokens up to 200k, maxSteps 1..50)
+   - Service: workspace-scoped CRUD + agent-tool attachment helpers (listTools/attachTool/detachTool)
+   - Controller stacks JwtAuthGuard + WorkspaceGuard + RolesGuard
+   - Reads = any member; writes = OWNER/ADMIN/MEMBER
+
+3. **ToolsModule:**
+   - DTOs validate tool name (function-name regex `^[a-zA-Z_][a-zA-Z0-9_]*$`), URL, HTTP method, JSON params object, timeoutMs bounds
+   - Service: workspace-scoped CRUD with `validateShape` helper that enforces type-specific required fields (HTTP needs httpMethod+httpUrl; BUILT_IN needs builtInType; MCP needs mcpServerUrl) and that `parameters` is a JSON Schema object with `type: "object"`
+   - HTTP method always uppercased on write
+   - P2002 → 409 ConflictException on duplicate tool name within workspace
+
+4. **Agent-Tool attachment endpoints:**
+   - GET /agents/:id/tools (any member)
+   - POST /agents/:id/tools (writes; AttachToolDto in its own file to avoid hoisting issue)
+   - DELETE /agents/:id/tools/:toolId
+
+5. **Bug fixed: class hoisting** — initially put `AttachToolDto` at bottom of controller file. NestJS reads `@Body() dto: AttachToolDto` metadata at class definition time → `Cannot access 'AttachToolDto' before initialization`. Moved DTO to `dto/attach-tool.dto.ts`.
+
+6. **Bug fixed: TypeScript Tool.parameters JsonValue conflict** — `validateShape` originally typed param as `Partial<Tool & CreateToolDto>` which Prisma's `JsonValue` rejected. Replaced with a small `ToolShapeInput` interface containing only the fields the validator inspects.
+
+7. **🎉 Live curl-based 14-step end-to-end test passed:**
+
+   ```
+   ✅ Alice creates agent, creates tool, attaches them
+   ✅ Duplicate attachment → 409 ConflictException
+   ✅ Bob (different workspace) → Alice's agents = 404 (multi-tenancy)
+   ✅ HTTP tool without httpUrl → 400 (shape validation)
+   ✅ Extra unknown field 'isAdmin' on agent → 400 (whitelist active)
+   ✅ Detach + list reflects empty state
+   ```
+
+### Concepts Locked This Session
+
+- ✅ Many-to-many join tables in Prisma (AgentTool with `@@unique([agentId, toolId])`)
+- ✅ Polymorphic shape pattern via `type` discriminator (HTTP/BUILT_IN/MCP) + service-side shape validation
+- ✅ JSON Schema for LLM function calling (industry-standard format)
+- ✅ Workspace-scoped CRUD discipline (every query starts with `where: { workspaceId, ... }`)
+- ✅ NestJS class hoisting gotcha (DTOs must be defined before they're referenced as decorator metadata — keep them in their own files)
+- ✅ Prisma JsonValue vs `Record<string, unknown>` type interop pattern
+- ✅ Shadow database concept (`prisma migrate diff --from-migrations` requirement)
+
+### Commits Made This Session (~7 atomic commits)
+
+```
+fix(agents): move AttachToolDto into its own file
+fix(tools): use a narrow ToolShapeInput type for validateShape
+feat(agents): add agent-tool attachment endpoints
+feat(tools): add ToolsModule with workspace-scoped CRUD
+feat(agents): add AgentsModule with workspace-scoped CRUD
+feat(database): apply agents_and_tools migration
+feat(database): add Agent, Tool, AgentTool models + ToolType enum
+```
+
+---
+
 ## 🎬 Next Session — Resume Point
 
 **Where we left off:** Abdullah ne quiz ke answers diye, feedback mila, "Acme" ka meaning clarified. User ne ghar jaane se pehle CLAUDE.md + PROGRESS.md update karne ko kaha hai.
 
-**Where we left off (end of Session 8):** **Week 3 fully complete!** Auth + Users + Workspaces + RBAC end-to-end live and stress-tested with a 14-step multi-user curl scenario. Foundation is rock-solid for building feature modules. Next = Week 4 (Agents + Tools).
+**Where we left off (end of Session 9):** **Week 4 fully complete!** Agents + Tools + attachments live with multi-tenancy enforced at every layer. Foundation now supports the actual product domain (LLM personas + their callable functions). Next = Weeks 5–6 (Knowledge Base & RAG).
 
-### Next concrete steps (Week 4 — Agents & Tools)
+### Next concrete steps (Weeks 5–6 — KB & RAG)
 
-Spec §6 (schema), §8.4 (Agents), §8.5 (Tools), §12 (Tool execution).
+Spec §6 (schema), §8.6 (KB module), §8.7 (Documents), §11 (RAG pipeline).
 
-1. **Schema migration: add Agent, Tool, AgentTool models**
-   - `Agent` — name, description, systemPrompt, model, provider, temperature, maxTokens, topP, responseFormat, toolChoice, maxSteps, isActive, soft-delete
-   - `Tool` — name, description, parameters (JSON Schema), type (HTTP/BUILT_IN/MCP), HTTP fields, timeoutMs
-   - `AgentTool` — many-to-many join
-   - Generate migration via `prisma migrate diff` workflow (NOT `migrate dev`)
+1. **Schema additions: KnowledgeBase, Document, DocumentChunk, AgentKnowledgeBase**
+   - `KnowledgeBase` — workspace-scoped, embeddingModel, chunkSize, chunkOverlap defaults
+   - `Document` — kb-scoped, status enum (PENDING/PROCESSING/INDEXED/FAILED), source/sourceUrl/mimeType
+   - `DocumentChunk` — chunkIndex, content (text), tokenCount, **embedding (Unsupported vector(1536))**
+   - `AgentKnowledgeBase` — m2m join with topK, minSimilarity per attachment
+   - Add raw SQL migration for HNSW index: `CREATE INDEX ON document_chunks USING hnsw (embedding vector_cosine_ops)`
 
-2. **AgentsModule (`apps/api/src/modules/agents`)**
-   - `dto/create-agent.dto.ts`, `dto/update-agent.dto.ts`
-   - `agents.service.ts` — workspace-scoped CRUD (every query filters `workspaceId`)
-   - `agents.controller.ts` — under `/v1/agents` per spec; JWT + WorkspaceGuard
-   - `@Roles('OWNER', 'ADMIN', 'MEMBER')` for write operations (VIEWER read-only)
+2. **KnowledgeBasesModule** (CRUD, workspace-scoped, role-guarded)
 
-3. **ToolsModule (`apps/api/src/modules/tools`)**
-   - DTOs with validation for HTTP tool fields (URL, method, body templates)
-   - JSON Schema validation of `parameters` field at write time (use `ajv`)
-   - Workspace-scoped CRUD
+3. **DocumentsModule** — upload to MinIO + queue indexing
+   - Will need MinIO client (`@aws-sdk/client-s3` against MinIO endpoint)
+   - For now: text-based source first; file upload after BullMQ wiring
 
-4. **Agent-Tool attachment**
-   - `POST /v1/agents/:id/tools` — attach
-   - `DELETE /v1/agents/:id/tools/:toolId` — detach
-   - `GET /v1/agents/:id/tools` — list attached
+4. **Embeddings library (`libs/embeddings`)**
+   - Provider interface (OpenAI text-embedding-3-small as default)
+   - Configuration via env (OPENAI_API_KEY)
 
-5. **Live test**
-   - Signup → create workspace (already auto-created)
-   - Create an Agent
-   - Create 1–2 Tools
-   - Attach tools to agent
-   - Verify another workspace cannot see them
+5. **BullMQ wiring (`libs/queue`)**
+   - Connect to Redis at localhost:6381
+   - Document-processing queue + worker
+   - **Note:** The worker app from spec section 5 (apps/worker) hasn't been scaffolded yet — this is a good time
+
+6. **Vector search service** — `searchSimilar(kbId, query, topK)` using pgvector cosine distance
+
+7. **Agent-KB attachment** (POST /agents/:id/knowledge-bases)
+
+8. **Live test** — upload a doc → wait for indexing → search → verify scoped to workspace
 
 ### Suggested opening message for next session
 
-> "Salam Abdullah! Week 3 fully done — auth, users, workspaces, RBAC sab solid hai. Aaj Week 4 — Agents & Tools. Pehle Prisma schema mein Agent + Tool models add karenge, migration chalayenge, phir AgentsModule + ToolsModule banayenge with workspace-scoped queries. End mein curl se: ek workspace mein agent banao, tool attach karo, doosre workspace ke user se 404 verify karo. Ready?"
+> "Salam Abdullah! Week 4 done — Agents + Tools live. Aaj Weeks 5–6 ka start — Knowledge Base + RAG. Yeh bara hissa hai (~3 sessions ka): schema additions for KB+Document+Chunk, embeddings provider abstraction, BullMQ worker app, vector search via pgvector. Ready se phir start karein?"
 
 ### ⚠️ Reminders for Future Claude
 
@@ -642,11 +710,11 @@ Spec §6 (schema), §8.4 (Agents), §8.5 (Tools), §12 (Tool execution).
 ## 🔖 Commits So Far
 
 Target: 200+ atomic commits.
-Current: **~58 commits locally** (push status owned by Abdullah).
+Current: **~65 commits locally** (push status owned by Abdullah).
 
-S1 (3 bulk) + S2 (12) + S3 (8) + S4 (9) + S5 (5) + S6 (5) + S7 (9) + S8 (~6).
+S1 (3 bulk) + S2 (12) + S3 (8) + S4 (9) + S5 (5) + S6 (5) + S7 (9) + S8 (6) + S9 (~7).
 
-Health: ~29% of the way to 200+ goal after 8 sessions across 2 calendar days. Week 3 done — major auth+RBAC foundation in the bank. On track for 12-week MVP.
+Health: ~33% of the way to 200+ goal after 9 sessions across 2 calendar days. Weeks 1–4 done. On track for 12-week MVP.
 
 ---
 
