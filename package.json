@@ -1,0 +1,23 @@
+{
+  "name": "agentify",
+  "version": "0.0.1",
+  "description": "Self-hostable AI agent orchestration platform",
+  "private": true,
+  "license": "UNLICENSED",
+  "author": "Abdullah Naseem",
+  "engines": {
+    "node": ">=20.0.0",
+    "npm": ">=10.0.0"
+  },
+  "scripts": {
+    "build": "echo 'build: not configured yet'",
+    "start": "echo 'start: not configured yet'",
+    "test": "echo 'test: not configured yet'",
+    "lint": "echo 'lint: not configured yet'",
+    "format": "echo 'format: not configured yet'"
+  },
+  "workspaces": [
+    "apps/*",
+    "libs/*"
+  ]
+}
