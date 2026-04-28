@@ -12,7 +12,6 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { Agent, Tool } from '@prisma/client';
-import { IsUUID } from 'class-validator';
 import { CurrentWorkspace } from '../../common/decorators/current-workspace.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { RolesGuard } from '../../common/guards/roles.guard';
@@ -21,6 +20,7 @@ import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { JwtUser } from '../auth/strategies/jwt.strategy';
 import { AgentsService } from './agents.service';
+import { AttachToolDto } from './dto/attach-tool.dto';
 import { CreateAgentDto } from './dto/create-agent.dto';
 import { UpdateAgentDto } from './dto/update-agent.dto';
 
@@ -104,9 +104,4 @@ export class AgentsController {
   ): Promise<void> {
     await this.agentsService.detachTool(ws.id, id, toolId);
   }
-}
-
-class AttachToolDto {
-  @IsUUID('4')
-  toolId!: string;
 }
