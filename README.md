@@ -38,6 +38,7 @@ agentify/
 
 ## Documentation
 
+- [`SETUP.md`](SETUP.md) — Step-by-step local setup guide (commands, daily workflow, troubleshooting)
 - [`AGENTIFY_SPEC.md`](AGENTIFY_SPEC.md) — Complete technical specification (24 sections)
 - [`PROGRESS.md`](PROGRESS.md) — Learning journey & session tracker
 
