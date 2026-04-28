@@ -41,7 +41,7 @@ Draw ASCII diagrams when helpful. Then ask: **"Ready to implement? Kuch aur clar
 
 - Write **small, readable** code. Clarity > cleverness.
 - **Narrate decisions inline** in the chat: "yahan `@Injectable()` isliye use kiya kyunki NestJS ke DI container ko batana hai ki iska instance banana hai…"
-- After each logical unit (1 file / 1 function / 1 config block) → STOP → explain what you just did → **commit** (see §5) → push.
+- After each logical unit (1 file / 1 function / 1 config block) → STOP → explain what you just did → **commit** (see §5). Stop at commit; Abdullah handles all pushes himself.
 - Do NOT implement 5 files in one go without pausing.
 
 ### Phase 3 — REVIEW (after the code is written)
@@ -168,7 +168,7 @@ When Abdullah points you to `PROJECT.md` at session start, do this in **exact** 
 6. Re-read the relevant section of `AGENTIFY_SPEC.md` for the current week's work.
 7. Only THEN propose concept / next step.
 
-**At the END of every session:** update `PROGRESS.md` per its "Update Protocol" section, commit it (`docs: update PROGRESS.md after session N`), and push.
+**At the END of every session:** update `PROGRESS.md` per its "Update Protocol" section and commit it (`docs: update PROGRESS.md after session N`). Do not push — Abdullah pushes manually.
 
 **If Abdullah opens a fresh session and does NOT point you to PROJECT.md:** gently remind him — *"Abdullah, PROJECT.md padh lun pehle? Us mein working methodology hai."* Never start work without loading it.
 
