@@ -4,8 +4,10 @@ import { DatabaseModule } from '@agentify/database';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { HealthModule } from './health/health.module';
+import { QueueModule } from '@agentify/queue';
 import { AgentsModule } from './modules/agents/agents.module';
 import { AuthModule } from './modules/auth/auth.module';
+import { DocumentsModule } from './modules/documents/documents.module';
 import { KnowledgeBasesModule } from './modules/knowledge-bases/knowledge-bases.module';
 import { ToolsModule } from './modules/tools/tools.module';
 import { UsersModule } from './modules/users/users.module';
@@ -15,6 +17,7 @@ import { WorkspacesModule } from './modules/workspaces/workspaces.module';
   imports: [
     ConfigModule.forRoot({ isGlobal: true, cache: true }),
     DatabaseModule,
+    QueueModule.forRoot(),
     HealthModule,
     UsersModule,
     AuthModule,
@@ -22,6 +25,7 @@ import { WorkspacesModule } from './modules/workspaces/workspaces.module';
     AgentsModule,
     ToolsModule,
     KnowledgeBasesModule,
+    DocumentsModule,
   ],
   controllers: [AppController],
   providers: [AppService],
