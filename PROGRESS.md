@@ -151,60 +151,126 @@ _Note: hashes seen here may differ from origin if Abdullah did GitHub-web-UI edi
 
 ---
 
+---
+
+## 📚 Session 3 Log (2026-04-29)
+
+### Kya Hua
+
+1. **Linting + Formatting setup (Step 1 of 4 from Session 2's plan):**
+   - Installed `eslint`, `@typescript-eslint/*`, `prettier`, `eslint-config-prettier`, `eslint-plugin-prettier`
+   - Created `.prettierrc` (semi, singleQuote, trailingComma all, printWidth 100)
+   - Created `.prettierignore` (excludes AGENTIFY_SPEC.md, lockfiles, dist)
+   - Created `.eslintrc.js` (TS parser, prettier integration, NestJS-friendly rules)
+   - Wired `npm run lint`, `lint:check`, `format`, `format:check`
+   - First `npm run format` reformatted PROGRESS.md and PROJECT.md (markdown table alignment)
+   - First `npm run lint:check` ran clean — zero errors, zero warnings
+
+2. **Docker Compose stack (Step 2 of 4):**
+   - Created `docker-compose.dev.yml` with 3 services: Postgres+pgvector, Redis, MinIO
+   - Created `.env.example` with documented required env vars
+   - **Port conflict resolved:** Abdullah's machine was already running `nexora-postgres` on 5432 and `nexora-redis` on 6379. Shifted host ports to 5433 (Postgres) and 6381 (Redis). MinIO 9000/9001 were free. All services run alongside existing stacks without conflict.
+   - Health checks configured on all 3 services
+   - Verified live:
+     - Postgres 16.13 running, `pgvector 0.8.2` extension successfully created
+     - Redis: PING/PONG, SET/GET working
+     - MinIO: healthy, console accessible at `http://localhost:9001`
+
+3. **README expanded** with first-time setup, prerequisites, service-port table, daily commands cheat-sheet.
+
+### Concepts Locked This Session
+
+- ✅ Linter vs Formatter distinction (ESLint catches bugs, Prettier enforces style)
+- ✅ Why `eslint-config-prettier` is needed (prevents rule conflicts)
+- ✅ Conventional Commits `style:` prefix (formatting-only changes)
+- ✅ Trailing comma benefit (cleaner git diffs)
+- ✅ Container vs VM (lightweight isolated process vs full guest OS)
+- ✅ Docker vocabulary: image, container, volume, network
+- ✅ Docker Compose YAML structure (services, volumes, healthchecks, port mapping)
+- ✅ `host:container` port mapping (`5433:5432` host→container)
+- ✅ Named volumes for data persistence across container restarts
+- ✅ pgvector availability via `CREATE EXTENSION vector` (verified on the spot)
+
+### Important Environment Notes
+
+- **Abdullah's machine has multiple parallel Docker projects** (nexora, teamchat, shopify). Standard ports 5432, 6379 are taken by nexora. Agentify uses 5433, 6381 instead. **Future Claude: do NOT change these ports back to defaults — it will break Abdullah's other projects.**
+- **Local Postgres data lives in named Docker volume `agentify-orchestration-platform_pgdata`** — survives `docker compose down`; only `docker compose down -v` deletes it.
+- **MinIO web console:** `http://localhost:9001` with `minioadmin` / `minioadmin` credentials (local-dev only).
+
+### Commits Made This Session (8 atomic commits)
+
+```
+0bd12cb docs: expand README with first-time setup and local service guide
+84c47ee chore: shift Postgres to 5433 and Redis to 6381 to avoid local conflicts
+b5b3bbf chore: add docker-compose.dev.yml + .env.example   (bundled by GitHub UI sync)
+9233992 style: apply Prettier formatting to PROGRESS.md and PROJECT.md
+5e073e2 chore: add ESLint config with TypeScript and Prettier integration
+6fd4823 chore: add .prettierignore for build/lock/spec files
+e26a2a0 chore: add .prettierrc with TypeScript-friendly defaults
+0f553ae chore: add ESLint, Prettier and lint/format scripts
+```
+
+(Some hashes may differ on origin if Abdullah edited via GitHub web UI between commits.)
+
+---
+
 ## 🎬 Next Session — Resume Point
 
 **Where we left off:** Abdullah ne quiz ke answers diye, feedback mila, "Acme" ka meaning clarified. User ne ghar jaane se pehle CLAUDE.md + PROGRESS.md update karne ko kaha hai.
 
-**Where we left off (end of Session 2):** Hello World NestJS API running on port 3001. All foundational config + skeleton files committed. Next phase = add real infrastructure (Prisma + Postgres + Docker).
+**Where we left off (end of Session 3):** Foundation complete. NestJS Hello World running, lint/format clean, Docker stack live with Postgres+pgvector, Redis, MinIO all healthy. Next phase = wire Prisma into the app and create the first DB schema.
 
 ### Next concrete steps (in order)
 
-1. **Linting + formatting setup** (small, high-value):
-   - Add `eslint`, `@typescript-eslint/*`, `prettier`, `eslint-config-prettier`
-   - Create `.eslintrc.js`, `.prettierrc`, `.prettierignore`
-   - Wire `npm run lint` and `npm run format`
-   - 4–5 atomic commits
+1. **Prisma + database lib (`libs/database`)** — the big one:
+   - Mini-concept: ORM kya hai, Prisma kyun chuna (vs TypeORM/Sequelize/raw SQL)
+   - Install `prisma` (dev) + `@prisma/client` (runtime)
+   - Create `libs/database/prisma/schema.prisma` — start with smallest meaningful subset from spec §6: `User`, `Workspace`, `WorkspaceMember`, `RefreshToken`. Postpone larger entities (Agent, Tool, etc.) until their own week.
+   - Run first migration: `npx prisma migrate dev --name init`
+   - Verify pgvector extension via raw SQL migration (`CREATE EXTENSION IF NOT EXISTS vector`)
+   - Create `libs/database/src/prisma.service.ts` extending `PrismaClient` with NestJS `OnModuleInit` / `OnModuleDestroy` lifecycle hooks
+   - Create `libs/database/src/database.module.ts` exporting `PrismaService` as a global module
+   - Wire `DatabaseModule` into `AppModule`
+   - Add a `/health/db` endpoint that runs `SELECT 1` to verify connectivity end-to-end
+   - Concept review: Prisma migrations, generated client, type-safe queries
 
-2. **Docker Compose for local infra (concept-heavy)**:
-   - Mini-concept: what Docker is, why Docker Compose, how it gives us Postgres+Redis without manual install
-   - `docker-compose.dev.yml` — Postgres 16 with pgvector, Redis 7, MinIO
-   - Just-in-time concepts: container vs VM, ports/volumes/env vars
-   - `.env.example` to document required variables (per spec §20)
+2. **`@agentify/common` lib skeleton** (small):
+   - `libs/common/src/index.ts` barrel file
+   - Placeholders for future utilities (pagination, error classes, crypto helpers)
+   - Verify path alias `@agentify/common` works in api app via test import
 
-3. **Prisma + database lib (libs/database)**:
-   - Mini-concept: ORM kya hai, Prisma kyun (vs TypeORM/Sequelize)
-   - Install `prisma`, `@prisma/client`
-   - `libs/database/prisma/schema.prisma` — start with User + Workspace + WorkspaceMember + RefreshToken (smallest meaningful subset from spec §6)
-   - First migration
-   - `PrismaService` in `libs/database/src` with NestJS lifecycle hooks
-   - Wire into `AppModule` to verify DB connection on boot
-
-4. **`@agentify/common` lib skeleton** (per tsconfig path aliases):
-   - `libs/common/src/index.ts` (barrel)
-   - Just placeholders; populate as needs arise
+3. **Auth foundation prep** (before Week 3):
+   - `.env` file actually created locally with real values
+   - JWT key generation script (`scripts/generate-jwt-keys.ts`)
+   - Sketch out `AuthModule` shape (controllers, service, guards) — code in Week 3
 
 ### Suggested opening message for next session
 
-> "Salam Abdullah! Pichli session ke end pe hamara Hello World NestJS API chal raha tha port 3001 pe. Aaj kya karna chahte ho — pehle linting/formatting setup (small, ~30 min, 4–5 commits), ya seedha Docker + Postgres + Prisma pe jump (bigger concept, ~2 hours, lots of new ideas)? Bonus: kya pichli session ke 15 commits push kar diye thay?"
+> "Salam Abdullah! Pichli session mein Docker stack live ho gaya tha — Postgres+pgvector, Redis, MinIO sab healthy. Aaj Prisma setup karte hain — yeh concept-heavy hai (ORM kya hai, schema-first approach, migrations). Pehle 10-min concept, phir step-by-step implementation, end mein ek `/health/db` endpoint banayenge jo actually DB se connect karke verify kare. Ready?"
 
 ### ⚠️ Reminders for Future Claude
 
 - **Never run `git push`** — only commits, Abdullah pushes himself. (See `feedback_never_push.md`.)
-- **Never use `nest new` CLI** — manual scaffolding only, file by file with explanations.
-- **Default port 3000 is busy on Abdullah's machine** — use `PORT=3001` for `npm run start:dev`. (Or another free port; let user pick.)
-- **Abdullah may edit on GitHub web UI between sessions** — expect commit-hash churn; don't be surprised if local commit hashes don't match origin's.
+- **Never use `nest new` or `prisma init` CLI without explanation** — manual file-by-file is the rule.
+- **Postgres is on host port 5433 (NOT 5432)**. Redis on 6381 (NOT 6379). DATABASE_URL in `.env.example` already correct. **Do not "fix" these ports back to defaults — Abdullah has nexora-postgres on 5432.**
+- **Postgres credentials** (local dev): user `agentify`, password `password`, db `agentify`.
+- **pgvector 0.8.2 verified working** — when writing schema, can use `Unsupported("vector(1536)")` pattern from spec §6.
+- **NestJS API on port 3000** (was free in Session 3 — port 3000 occupant from Session 2 is gone).
+- **Abdullah may edit on GitHub web UI between sessions** — commit hashes churn; substance is what matters.
+- **Docker Compose path:** always use `-f docker-compose.dev.yml` flag (not the default `docker-compose.yml`).
 
 ---
 
 ## 🔖 Commits So Far
 
 Target: 200+ atomic commits.
-Current: **15 commits locally** (push status owned by Abdullah).
+Current: **~23 commits locally** (push status owned by Abdullah).
 
-Session 1 (3 user-made bulk commits, non-conventional format) +
-Session 2 (12 atomic commits in Conventional Commits format).
+Session 1 (3 user-made bulk commits) +
+Session 2 (12 atomic commits) +
+Session 3 (8 atomic commits).
 
-Health: ~7% of the way to 200+ goal. On track for 12-week MVP if average ~17 commits/week.
+Health: ~12% of the way to 200+ goal after 3 sessions. On track.
 
 ---
 
