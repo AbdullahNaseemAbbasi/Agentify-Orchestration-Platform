@@ -10,6 +10,8 @@ import { AgentsModule } from './modules/agents/agents.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { DocumentsModule } from './modules/documents/documents.module';
 import { KnowledgeBasesModule } from './modules/knowledge-bases/knowledge-bases.module';
+import { MessagesModule } from './modules/messages/messages.module';
+import { ThreadsModule } from './modules/threads/threads.module';
 import { ToolsModule } from './modules/tools/tools.module';
 import { UsersModule } from './modules/users/users.module';
 import { WorkspacesModule } from './modules/workspaces/workspaces.module';
@@ -28,6 +30,8 @@ import { WorkspacesModule } from './modules/workspaces/workspaces.module';
     ToolsModule,
     KnowledgeBasesModule,
     DocumentsModule,
+    ThreadsModule,
+    MessagesModule,
   ],
   controllers: [AppController],
   providers: [AppService],
