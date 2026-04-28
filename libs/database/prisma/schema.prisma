@@ -65,6 +65,8 @@ model Workspace {
 
   owner   User              @relation("WorkspaceOwner", fields: [ownerId], references: [id])
   members WorkspaceMember[]
+  agents  Agent[]
+  tools   Tool[]
 
   @@map("workspaces")
 }
@@ -96,4 +98,84 @@ enum Role {
   ADMIN
   MEMBER
   VIEWER
+}
+
+// ============================================
+// AGENTS & TOOLS (Week 4)
+// ============================================
+
+model Agent {
+  id             String   @id @default(uuid())
+  workspaceId    String
+  name           String
+  description    String?
+  systemPrompt   String   @db.Text
+  model          String
+  provider       String
+  temperature    Float    @default(0.7)
+  maxTokens      Int      @default(4096)
+  topP           Float?
+  responseFormat Json?
+  toolChoice     String   @default("auto")
+  maxSteps       Int      @default(10)
+  isActive       Boolean  @default(true)
+  createdById    String
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  deletedAt      DateTime?
+
+  workspace Workspace   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  tools     AgentTool[]
+
+  @@index([workspaceId])
+  @@map("agents")
+}
+
+model Tool {
+  id            String   @id @default(uuid())
+  workspaceId   String
+  name          String
+  description   String   @db.Text
+  parameters    Json
+  type          ToolType @default(HTTP)
+  // HTTP tool fields
+  httpMethod    String?
+  httpUrl       String?
+  httpHeaders   Json?
+  httpBody      Json?
+  httpAuthType  String?
+  httpAuthValue String?
+  // Built-in / MCP placeholders
+  builtInType   String?
+  mcpServerUrl  String?
+  timeoutMs     Int      @default(30000)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  workspace  Workspace   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  agentTools AgentTool[]
+
+  @@unique([workspaceId, name])
+  @@index([workspaceId])
+  @@map("tools")
+}
+
+enum ToolType {
+  HTTP
+  BUILT_IN
+  MCP
+}
+
+model AgentTool {
+  id        String   @id @default(uuid())
+  agentId   String
+  toolId    String
+  createdAt DateTime @default(now())
+
+  agent Agent @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  tool  Tool  @relation(fields: [toolId], references: [id], onDelete: Cascade)
+
+  @@unique([agentId, toolId])
+  @@index([toolId])
+  @@map("agent_tools")
 }
