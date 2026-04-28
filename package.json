@@ -27,8 +27,7 @@
     "keys:generate": "ts-node scripts/generate-jwt-keys.ts"
   },
   "workspaces": [
-    "apps/*",
-    "libs/*"
+    "apps/*"
   ],
   "dependencies": {
     "@nestjs/common": "^10.4.15",
