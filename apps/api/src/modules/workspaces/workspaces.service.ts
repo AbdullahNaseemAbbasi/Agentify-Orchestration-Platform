@@ -93,6 +93,118 @@ export class WorkspacesService {
   }
 
   // ----------------------------------------------
+  // Members
+  // ----------------------------------------------
+
+  async listMembers(workspaceId: string): Promise<
+    Array<{
+      userId: string;
+      role: Role;
+      joinedAt: Date;
+      email: string;
+      name: string;
+    }>
+  > {
+    const rows = await this.prisma.workspaceMember.findMany({
+      where: { workspaceId },
+      include: { user: { select: { id: true, email: true, name: true } } },
+      orderBy: { joinedAt: 'asc' },
+    });
+    return rows.map((m) => ({
+      userId: m.user.id,
+      role: m.role,
+      joinedAt: m.joinedAt,
+      email: m.user.email,
+      name: m.user.name,
+    }));
+  }
+
+  async inviteMember(
+    workspaceId: string,
+    invitedById: string,
+    email: string,
+    role: Role = 'MEMBER',
+  ): Promise<{ userId: string; role: Role }> {
+    if (role === 'OWNER') {
+      throw new ForbiddenException('Cannot invite a user as OWNER — only the creator is the owner');
+    }
+
+    const target = await this.prisma.user.findFirst({
+      where: { email: email.toLowerCase(), deletedAt: null },
+    });
+    if (!target) {
+      throw new NotFoundException(`No user found with email ${email}`);
+    }
+
+    const existing = await this.prisma.workspaceMember.findFirst({
+      where: { workspaceId, userId: target.id },
+    });
+    if (existing) {
+      throw new ConflictException('User is already a member of this workspace');
+    }
+
+    const member = await this.prisma.workspaceMember.create({
+      data: { workspaceId, userId: target.id, invitedById, role },
+    });
+    this.logger.log(
+      `User ${invitedById} invited ${target.id} (${email}) to workspace ${workspaceId} as ${role}`,
+    );
+    return { userId: target.id, role: member.role };
+  }
+
+  async updateMemberRole(
+    workspaceId: string,
+    actorRole: Role,
+    targetUserId: string,
+    newRole: Role,
+  ): Promise<{ userId: string; role: Role }> {
+    if (newRole === 'OWNER') {
+      throw new ForbiddenException('Promoting to OWNER is not supported here — use transfer ownership');
+    }
+
+    const target = await this.prisma.workspaceMember.findFirst({
+      where: { workspaceId, userId: targetUserId },
+    });
+    if (!target) {
+      throw new NotFoundException('Member not found in this workspace');
+    }
+    if (target.role === 'OWNER') {
+      throw new ForbiddenException('Cannot change the OWNER role');
+    }
+    if (actorRole === 'ADMIN' && target.role === 'ADMIN') {
+      throw new ForbiddenException('Admins cannot change another admin');
+    }
+
+    const updated = await this.prisma.workspaceMember.update({
+      where: { id: target.id },
+      data: { role: newRole },
+    });
+    return { userId: target.userId, role: updated.role };
+  }
+
+  async removeMember(
+    workspaceId: string,
+    actorRole: Role,
+    targetUserId: string,
+  ): Promise<void> {
+    const target = await this.prisma.workspaceMember.findFirst({
+      where: { workspaceId, userId: targetUserId },
+    });
+    if (!target) {
+      throw new NotFoundException('Member not found in this workspace');
+    }
+    if (target.role === 'OWNER') {
+      throw new ForbiddenException('Cannot remove the OWNER');
+    }
+    if (actorRole === 'ADMIN' && target.role === 'ADMIN') {
+      throw new ForbiddenException('Admins cannot remove another admin');
+    }
+
+    await this.prisma.workspaceMember.delete({ where: { id: target.id } });
+    this.logger.log(`Member ${targetUserId} removed from workspace ${workspaceId}`);
+  }
+
+  // ----------------------------------------------
   // Membership lookup helpers (reused by guards)
   // ----------------------------------------------
 
