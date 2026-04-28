@@ -6,7 +6,7 @@
 
 ## 📅 Last Updated
 
-**2026-04-29** — End of Session 4 (continued same day)
+**2026-04-29** — End of Session 5 (Phase A of Week 3 Auth foundation done)
 
 ---
 
@@ -19,7 +19,7 @@ Hum `AGENTIFY_SPEC.md` §22 ke 12-week roadmap follow kar rahe hain.
 | **Pre-Week 1** | Project-level conceptual overview                      | ✅ Done (Ch 1–7 + workspace refresh + NestJS/TS intro)          |
 | **Week 1**     | Foundation: NestJS monorepo + Hello World API          | ✅ Done (skeleton running, lint+format, Docker stack live)     |
 | **Week 2**     | Prisma + database lib + first migration + /health/db   | ✅ Done (4 tables migrated, pgvector active, DB health green) |
-| **Week 3**     | Auth & Users (signup, login, JWT, refresh, RBAC)       | 🟡 **IN PROGRESS** (schema ready, modules to build)           |
+| **Week 3**     | Auth & Users (signup, login, JWT, refresh, RBAC)       | 🟡 **IN PROGRESS** — Phase A done (utils + keys); Phase B (Users), C (Auth), D (RBAC) pending |
 | Week 3         | Auth & Users                                           | ⬜ Pending                                                      |
 | Week 4         | Agents & Tools                                         | ⬜ Pending                                                      |
 | Week 5–6       | Knowledge Base & RAG                                   | ⬜ Pending                                                      |
@@ -297,51 +297,101 @@ chore: add Prisma 5 ORM with helper scripts
 
 ---
 
+---
+
+## 📚 Session 5 Log (2026-04-29 — Phase A of Week 3)
+
+### Kya Hua
+
+1. **Concept chapter delivered:** Authentication vs Authorization, argon2id vs bcrypt, RS256 vs HS256.
+
+2. **`libs/common` workspace package scaffolded** (mirrors `libs/database` pattern): package.json (`@agentify/common`), tsconfig.lib.json, barrel `index.ts`, `crypto/` subfolder.
+
+3. **`argon2` 0.41 installed** as a runtime dependency. Native bindings ship pre-built on Windows — no Visual Studio required.
+
+4. **`password.util.ts` written:**
+   - `hashPassword(plain): Promise<string>` — rejects empty input, uses OWASP 2023 baseline (memoryCost 19 MiB, timeCost 2, parallelism 1).
+   - `verifyPassword(plain, hash): Promise<boolean>` — returns false on empty input, otherwise constant-time `argon2.verify`.
+   - Exported via `libs/common/src/index.ts` barrel.
+   - **Sanity-tested live** via a scratch script: correct password → true, wrong → false. Hash format includes algo + params + salt + hash in one 97-char string.
+
+5. **`scripts/generate-jwt-keys.ts`** — RSA-4096 keypair generator using Node `crypto.generateKeyPairSync`:
+   - Cross-platform (no openssl dependency)
+   - Refuses to overwrite existing keys
+   - Sets 0600 perms on private key
+   - Wired up as `npm run keys:generate`
+   - **Ran live:** generated `keys/jwt-private.pem` (3272 bytes) + `keys/jwt-public.pem` (800 bytes). Both gitignored via `keys/` + `*.pem` rules.
+
+6. **`.env.example` updated** with `JWT_PRIVATE_KEY_PATH`, `JWT_PUBLIC_KEY_PATH`, `JWT_ALGORITHM=RS256`, `JWT_ACCESS_TTL=15m`, `JWT_REFRESH_TTL=30d`, `JWT_ISSUER`, `JWT_AUDIENCE`.
+
+7. **`.env`** (local, gitignored) synced from updated example.
+
+8. **`.gitignore`**: added `keys/`, `*.pem`, `.claude/`.
+
+### Concepts Locked This Session
+
+- ✅ Authentication vs Authorization
+- ✅ argon2id vs bcrypt — why argon2id wins (PHC winner, memory-hard, OWASP)
+- ✅ Argon2 hash anatomy (algo + params + salt + hash, all in one string)
+- ✅ Constant-time comparison (timing-attack safety)
+- ✅ HS256 vs RS256 — symmetric vs asymmetric signing
+- ✅ Why RS256 (public-key verification by other services without sharing the secret)
+- ✅ RSA keypair generation via Node `crypto.generateKeyPairSync`
+- ✅ File permission `0600` for private key safety
+- ✅ Path-based env vars vs inline secret strings
+
+### Commits Made This Session (~5 atomic commits)
+
+```
+chore: document JWT key paths and RS256 settings in .env.example
+feat: add scripts/generate-jwt-keys.ts for RS256 keypair generation
+chore: ignore .claude/ editor metadata folder
+chore: add argon2 0.41 for password hashing
+chore(common): scaffold libs/common workspace package
+```
+
+(Plus `password.util.ts` got bundled into the argon2 commit due to GitHub UI sync — same pattern as before. State is correct, just commit messages aren't perfectly atomic.)
+
+---
+
 ## 🎬 Next Session — Resume Point
 
 **Where we left off:** Abdullah ne quiz ke answers diye, feedback mila, "Acme" ka meaning clarified. User ne ghar jaane se pehle CLAUDE.md + PROGRESS.md update karne ko kaha hai.
 
-**Where we left off (end of Session 4):** Full DB stack working end-to-end. Prisma migrated 4 core tables + pgvector. PrismaService + DatabaseModule (Global) wired into AppModule. `/health/db` returns `{"status":"ok","latencyMs":15}` — proves entire chain (HTTP → controller → service → Prisma → Postgres → result) is alive. Next phase = Auth (Week 3 in spec).
+**Where we left off (end of Session 5):** Phase A of Week 3 done. `libs/common` scaffolded with argon2id-based password util. RSA-4096 keypair generated and gitignored. `.env.example` documents JWT paths/algo/TTLs. Next = Phase B (Users module).
 
-### Next concrete steps (in order, Week 3 — Auth & Users)
+### Next concrete steps (in order)
 
-Spec §7 + §8.1 are the references. Build in this order:
+**Phase B — Users Module (start of Session 6):**
 
-1. **Auth foundation utilities (`libs/common` first):**
-   - Scaffold `libs/common` workspace package (similar to `libs/database`)
-   - Add password hashing utility using `argon2id` (spec §19.1)
-   - Add JWT signing/verification helpers using RS256 (spec §7.1) — generate keypair via `openssl genrsa -out jwt-private.pem 4096` + `openssl rsa -pubout`
-   - Add `scripts/generate-jwt-keys.ts` for one-time keypair generation
+1. Install `class-validator` and `class-transformer` (NestJS standard for DTO validation)
+2. Wire `ValidationPipe` globally in `main.ts` (catches malformed bodies)
+3. Create `apps/api/src/modules/users/`:
+   - `dto/create-user.dto.ts` — email + password + name with validators (`@IsEmail`, `@MinLength`, etc.)
+   - `dto/update-user.dto.ts` — partial of create
+   - `users.service.ts` — `findById`, `findByEmail`, `create` (uses `hashPassword`), `update`
+   - `users.controller.ts` — minimal for now (real `/users/me` comes after JwtAuthGuard exists in Phase C)
+   - `users.module.ts`
+4. Wire `UsersModule` into `AppModule`
+5. Sanity-test by manually calling `POST /users` (or via Prisma Studio) and confirming hashed password in DB
 
-2. **Users module (`apps/api/src/modules/users`)**:
-   - DTOs: `CreateUserDto`, `UpdateUserDto`
-   - `UsersService`: `findById`, `findByEmail`, `create`, `update` — all using PrismaService
-   - `UsersController`: GET /users/me (authenticated), PATCH /users/me
-   - Unit tests with mocked PrismaService
+**Phase C — Auth Module (Session 7):**
+- Install `@nestjs/jwt`, `@nestjs/passport`, `passport`, `passport-jwt`, `@types/passport-jwt`
+- Create `JwtConfigService` that reads keys from `keys/*.pem` paths
+- `auth.service.ts`: signup (creates User + Workspace + Member atomically), login, refresh (token rotation), logout (revoke refresh)
+- `auth.controller.ts`: POST /auth/signup, /auth/login, /auth/refresh, /auth/logout
+- `JwtStrategy` + `JwtAuthGuard`
+- `@CurrentUser()` decorator
+- Update `/users/me` to be JWT-protected
 
-3. **Auth module (`apps/api/src/modules/auth`)**:
-   - DTOs: `SignupDto`, `LoginDto`, `RefreshDto`
-   - `AuthService`: signup, login, refresh, logout
-   - JWT + refresh token storage in DB (RefreshToken model already in schema)
-   - `AuthController`: POST /auth/signup, /auth/login, /auth/refresh, /auth/logout
-   - `JwtAuthGuard` with passport-jwt strategy
-   - `@CurrentUser()` decorator that extracts user from JWT
-   - On signup: create User + default Workspace + WorkspaceMember(OWNER) — atomic transaction
-
-4. **Workspaces module skeleton:**
-   - `WorkspacesService` and `WorkspacesController` for CRUD
-   - `@CurrentWorkspace()` decorator
-   - `WorkspaceContext` interface
-   - Multi-tenancy enforcement: every query MUST include `workspaceId`
-
-5. **Roles & RBAC:**
-   - `@Roles(...)` decorator
-   - `RolesGuard` checks JWT payload for membership role
-   - Role table from spec §7.4 enforced on routes
+**Phase D — Workspaces + RBAC (Session 8):**
+- WorkspacesModule (CRUD)
+- `@CurrentWorkspace()` decorator + `WorkspaceContext`
+- `@Roles(OWNER, ADMIN, ...)` decorator + `RolesGuard`
 
 ### Suggested opening message for next session
 
-> "Salam Abdullah! Pichli session mein Prisma fully wired ho gaya — `/health/db` se DB connectivity verified. Aaj Week 3 start karenge — Authentication. Yeh thora bara hissa hai (signup, login, JWT, refresh tokens, RBAC). Pehle `libs/common` mein password hashing aur JWT helpers banayenge, phir UsersModule, phir AuthModule. End mein full signup → login → refresh flow chal raha hoga. Ready?"
+> "Salam Abdullah! Phase A done — argon2 password hashing aur JWT keys ready hain. Aaj Phase B (Users module) shuru karte hain. Pehle class-validator install karenge, phir UsersModule banayenge — DTOs, service with hashPassword, controller. End mein DB mein actual hashed user banake verify karenge. Ready?"
 
 ### ⚠️ Reminders for Future Claude
 
@@ -350,14 +400,16 @@ Spec §7 + §8.1 are the references. Build in this order:
 - **Postgres on host port 5433** (NOT 5432); Redis on **6381** (NOT 6379). Don't "fix" back to defaults.
 - **Postgres credentials** (local dev): user `agentify`, password `password`, db `agentify`. Schema = `public`.
 - **pgvector 0.8.2 active** — when adding embeddings, use `Unsupported("vector(1536)")` per spec §6.
-- **`prisma migrate dev` is interactive — does NOT work in agent shells.** Use this workflow instead:
+- **`prisma migrate dev` is interactive — does NOT work in agent shells.** Workflow instead:
   1. `npx prisma migrate diff --from-empty --to-schema-datamodel <schema> --script > migrations/<TIMESTAMP>_<name>/migration.sql`
      (or `--from-migrations` for incremental)
   2. `npm run prisma:migrate:deploy`
   3. Ensure `migration_lock.toml` exists (provider = postgresql)
-- **`@agentify/database` path alias works** transparently in `apps/api` (tsconfig paths).
-- **Server port 3000/3001 often busy on Abdullah's machine.** Use `PORT=3002` (or higher) for verification runs. Document the port used in PROGRESS update.
+- **`@agentify/database` and `@agentify/common` path aliases** work transparently in apps via root tsconfig paths.
+- **Server port 3000/3001 often busy on Abdullah's machine.** Use `PORT=3002` (or higher) for verification runs.
 - **Docker Compose path:** always use `-f docker-compose.dev.yml` flag.
+- **JWT keys live at `keys/*.pem`** (gitignored). `npm run keys:generate` regenerates them — but DO NOT regenerate carelessly: it invalidates every issued token. Script refuses to overwrite existing files.
+- **Argon2 password hash format:** `$argon2id$v=19$m=19456,t=2,p=1$<salt>$<hash>` (~97 chars). Salt + params embedded — `passwordHash` column needs to fit a string of at least ~120 chars (Postgres TEXT is unlimited so we're fine).
 - **Abdullah edits via GitHub web UI between sessions** — commit hashes churn, substance is what matters.
 
 ---
