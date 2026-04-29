@@ -816,13 +816,13 @@ feat(embeddings): add libs/embeddings with mock + OpenAI providers
 
 6. **🎉 Live verified:**
    ```
-   ✅ Two docs uploaded → both auto-INDEXED via worker (Phase 2)
-   ✅ POST /search returns SearchHit[] with documentName + similarity
-   ✅ Cross-workspace search → 404 (multi-tenancy holds)
-   ✅ minSimilarity=0.99 → 0 hits (threshold filter works)
-   ✅ Mock embeddings: similarity numerically meaningful but not semantic;
-      shape, scoping, and filtering all correct — swap to OpenAI for real
-      semantic results
+    Two docs uploaded → both auto-INDEXED via worker (Phase 2)
+    POST /search returns SearchHit[] with documentName + similarity
+    Cross-workspace search → 404 (multi-tenancy holds)
+    minSimilarity=0.99 → 0 hits (threshold filter works)
+    Mock embeddings: similarity numerically meaningful but not semantic;
+    shape, scoping, and filtering all correct — swap to OpenAI for real
+    semantic results
    ```
 
 ### Concepts Locked This Session
@@ -845,9 +845,9 @@ feat(kb): add SearchService for vector similarity search
 
 ---
 
-## 📚 Session 13 Log (2026-04-29 — Week 7-8 Phase A: libs/llm)
+📚 Session 13 Log (2026-04-29 — Week 7-8 Phase A: libs/llm)
 
-### Kya Hua
+Kya Hua
 
 1. **Concept** delivered: anatomy of an LLM completions request/response, OpenAI Chat Completions vs Anthropic Messages API differences (system prompt placement, tool-call shape, auth header, token field names).
 
