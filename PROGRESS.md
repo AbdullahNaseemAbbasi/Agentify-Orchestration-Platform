@@ -825,7 +825,7 @@ feat(embeddings): add libs/embeddings with mock + OpenAI providers
     semantic results
    ```
 
-### Concepts Locked This Session
+### Concepts Locked This Session 
 
 -Why ORDER BY distance (HNSW-friendly), SELECT similarity (UI-friendly)
 -Workspace-scoping a vector search — JOIN documents and filter `knowledgeBaseId`
@@ -834,7 +834,7 @@ feat(embeddings): add libs/embeddings with mock + OpenAI providers
 -Decimal-string conversion: pg `numeric` columns return as strings — coerce explicitly
 -Tradeoff between SQL-side and TS-side filtering for thresholds (TS simpler, SQL faster on huge datasets)
 
-### Commits Made This Session (~2 atomic commits)
+### Commits Made This Session (~2 atomic commits) 
 
 ```
 feat(kb): add POST /knowledge-bases/:id/search endpoint
