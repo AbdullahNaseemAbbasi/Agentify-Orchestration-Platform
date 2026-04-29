@@ -827,12 +827,12 @@ feat(embeddings): add libs/embeddings with mock + OpenAI providers
 
 ### Concepts Locked This Session
 
-- ✅ Why ORDER BY distance (HNSW-friendly), SELECT similarity (UI-friendly)
-- ✅ Workspace-scoping a vector search — JOIN documents and filter `knowledgeBaseId`
-- ✅ pgvector `<=>` operator returns distance, not similarity
-- ✅ Reading raw query results into typed shape with `$queryRawUnsafe<T>()`
-- ✅ Decimal-string conversion: pg `numeric` columns return as strings — coerce explicitly
-- ✅ Tradeoff between SQL-side and TS-side filtering for thresholds (TS simpler, SQL faster on huge datasets)
+-Why ORDER BY distance (HNSW-friendly), SELECT similarity (UI-friendly)
+-Workspace-scoping a vector search — JOIN documents and filter `knowledgeBaseId`
+-pgvector `<=>` operator returns distance, not similarity
+-Reading raw query results into typed shape with `$queryRawUnsafe<T>()`
+-Decimal-string conversion: pg `numeric` columns return as strings — coerce explicitly
+-Tradeoff between SQL-side and TS-side filtering for thresholds (TS simpler, SQL faster on huge datasets)
 
 ### Commits Made This Session (~2 atomic commits)
 
