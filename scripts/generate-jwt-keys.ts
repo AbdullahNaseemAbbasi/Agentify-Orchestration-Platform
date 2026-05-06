@@ -16,13 +16,13 @@ import { generateKeyPairSync } from 'node:crypto';
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
-const KEYS_DIR = resolve(__dirname, '..', 'keys');
-const PRIVATE_KEY_PATH = resolve(KEYS_DIR, 'jwt-private.pem');
-const PUBLIC_KEY_PATH = resolve(KEYS_DIR, 'jwt-public.pem');
+const KEYS_DIR = resolve(__dirname, '..', 'keys');  
+const PRIVATE_KEY_PATH = resolve(KEYS_DIR, 'jwt-private.pem');  
+const PUBLIC_KEY_PATH = resolve(KEYS_DIR, 'jwt-public.pem');  
 
-function main(): void {
+function main(): void { 
   if (!existsSync(KEYS_DIR)) {
-    mkdirSync(KEYS_DIR, { recursive: true });
+    mkdirSync(KEYS_DIR, { recursive: true }); 
   }
 
   if (existsSync(PRIVATE_KEY_PATH) || existsSync(PUBLIC_KEY_PATH)) {
