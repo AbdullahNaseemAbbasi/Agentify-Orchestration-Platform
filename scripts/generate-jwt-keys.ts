@@ -27,7 +27,7 @@ function main(): void {
 
   if (existsSync(PRIVATE_KEY_PATH) || existsSync(PUBLIC_KEY_PATH)) {
     console.error(
-      `\nKeys already exist at ${KEYS_DIR}.\n` +
+      `\nKeys already exist at ${KEYS_DIR}.\n` + 
         `Delete them manually if you really want to rotate (this WILL invalidate every issued JWT).\n`,
     );
     process.exit(1);
@@ -35,10 +35,10 @@ function main(): void {
 
   console.log('Generating RSA-4096 keypair (this takes a few seconds)…');
 
-  const { privateKey, publicKey } = generateKeyPairSync('rsa', {
+  const { privateKey, publicKey } = generateKeyPairSync('rsa', { 
     modulusLength: 4096,
     publicKeyEncoding: { type: 'spki', format: 'pem' },
-    privateKeyEncoding: { type: 'pkcs8', format: 'pem' },
+    privateKeyEncoding: { type: 'pkcs8', format: 'pem' }, 
   });
 
   writeFileSync(PRIVATE_KEY_PATH, privateKey, { mode: 0o600 });
@@ -51,4 +51,4 @@ function main(): void {
   console.log('  JWT_PUBLIC_KEY_PATH=keys/jwt-public.pem\n');
 }
 
-main();
+main(); 
