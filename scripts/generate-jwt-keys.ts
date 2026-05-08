@@ -48,7 +48,7 @@ function main(): void {
   console.log(`✅ Public  key written: ${PUBLIC_KEY_PATH}\n`);
   console.log('Add these to your .env:');
   console.log('  JWT_PRIVATE_KEY_PATH=keys/jwt-private.pem');
-  console.log('  JWT_PUBLIC_KEY_PATH=keys/jwt-public.pem\n');
+  console.log('  JWT_PUBLIC_KEY_PATH=keys/jwt-public.pem\n');  
 }
 
-main(); 
+main();
