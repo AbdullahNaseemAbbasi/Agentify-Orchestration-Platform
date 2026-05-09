@@ -38,7 +38,7 @@ function main(): void {
   const { privateKey, publicKey } = generateKeyPairSync('rsa', { 
     modulusLength: 4096,
     publicKeyEncoding: { type: 'spki', format: 'pem' },
-    privateKeyEncoding: { type: 'pkcs8', format: 'pem' }, 
+    privateKeyEncoding: { type: 'pkcs8', format: 'pem' },    
   });
 
   writeFileSync(PRIVATE_KEY_PATH, privateKey, { mode: 0o600 });
