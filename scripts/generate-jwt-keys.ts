@@ -42,7 +42,7 @@ function main(): void {
   });
 
   writeFileSync(PRIVATE_KEY_PATH, privateKey, { mode: 0o600 });
-  writeFileSync(PUBLIC_KEY_PATH, publicKey, { mode: 0o644 });
+  writeFileSync(PUBLIC_KEY_PATH, publicKey, { mode: 0o644 });  
 
   console.log(`\n✅ Private key written: ${PRIVATE_KEY_PATH}`);
   console.log(`✅ Public  key written: ${PUBLIC_KEY_PATH}\n`);
