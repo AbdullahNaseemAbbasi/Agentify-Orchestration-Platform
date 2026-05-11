@@ -33,9 +33,9 @@ function main(): void {
     process.exit(1);
   }
 
-  console.log('Generating RSA-4096 keypair (this takes a few seconds)…');
+  console.log('Generating RSA-4096 keypair (this takes a few seconds)…');  
 
-  const { privateKey, publicKey } = generateKeyPairSync('rsa', { 
+  const { privateKey, publicKey } = generateKeyPairSync('rsa', {   
     modulusLength: 4096,
     publicKeyEncoding: { type: 'spki', format: 'pem' },
     privateKeyEncoding: { type: 'pkcs8', format: 'pem' },    
