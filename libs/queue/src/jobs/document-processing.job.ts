@@ -11,4 +11,4 @@ export interface DocumentProcessingJob {
   text: string;
 }
 
-export const DOCUMENT_PROCESSING_JOB_NAME = 'process-document';  
+export const DOCUMENT_PROCESSING_JOB_NAME = 'process-document';    
