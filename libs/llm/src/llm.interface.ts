@@ -9,12 +9,12 @@ export type LlmRole = 'system' | 'user' | 'assistant' | 'tool';
 
 export interface LlmToolCall { 
   id: string; 
-  name: string; 
+  name: string;
   /** Stringified JSON arguments — mirrors OpenAI tool_calls.function.arguments. */
   arguments: string; 
 }
 
-export interface LlmMessage { 
+export interface LlmMessage {
   role: LlmRole;
   /** Plain text content. May be empty when an assistant emits only tool calls. */
   content: string;
