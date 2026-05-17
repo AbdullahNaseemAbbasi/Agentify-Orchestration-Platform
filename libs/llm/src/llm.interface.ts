@@ -7,7 +7,7 @@
 
 export type LlmRole = 'system' | 'user' | 'assistant' | 'tool';
 
-export interface LlmToolCall { 
+export interface LlmToolCall {   
   id: string; 
   name: string;
   /** Stringified JSON arguments — mirrors OpenAI tool_calls.function.arguments. */
