@@ -13,7 +13,7 @@ const ARGON2_OPTIONS: argon2.Options = {
   memoryCost: 19_456,
   timeCost: 2,
   parallelism: 1,
-};
+}; 
 
 export function hashPassword(plain: string): Promise<string> {
   if (!plain || plain.length === 0) {
