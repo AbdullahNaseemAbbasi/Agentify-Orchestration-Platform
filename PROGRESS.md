@@ -14,19 +14,19 @@
 
 Hum `AGENTIFY_SPEC.md` §22 ke 12-week roadmap follow kar rahe hain.
 
-| Week           | Topic                                                  | Status                                                          |
-| -------------- | ------------------------------------------------------ | --------------------------------------------------------------- |
-| **Pre-Week 1** | Project-level conceptual overview                      | ✅ Done (Ch 1–7 + workspace refresh + NestJS/TS intro)          |
-| **Week 1**     | Foundation: NestJS monorepo + Hello World API          | ✅ Done (skeleton running, lint+format, Docker stack live)     |
-| **Week 2**     | Prisma + database lib + first migration + /health/db   | ✅ Done (4 tables migrated, pgvector active, DB health green) |
-| **Week 3**     | Auth & Users (signup, login, JWT, refresh, RBAC)       | ✅ **DONE** — Phases A+B+C+D live and verified end-to-end with multi-user curl scenarios |
-| **Week 4**     | Agents & Tools                                          | ✅ **DONE** — schema migrated, Agents+Tools+attachments CRUD live and verified |
-| **Week 5–6**   | Knowledge Base & RAG                                    | ✅ **DONE** — full pipeline live: KB CRUD + documents + embeddings + worker + indexing + vector search verified end-to-end. Only multipart file upload deferred (text upload covers learning). |
-| **Week 7–8**   | Agent Runtime Engine                                   | ✅ **DONE** — All 4 phases live: libs/llm, Thread/Message/Run schema, RunsService reasoning loop, sync POST /agents/:id/runs endpoint verified end-to-end |
-| **Week 9**     | Streaming & Async                                      | 🟡 **READY TO START** — needs SSE + BullMQ async runs |
-| Week 10        | Memory System                                          | ⬜ Pending                                                      |
-| Week 11        | Observability & Webhooks                               | ⬜ Pending                                                      |
-| Week 12        | Polish & Deployment                                    | ⬜ Pending                                                      |
+| Week           | Topic                                                | Status                                                                                                                                                                                         |
+| -------------- | ---------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Pre-Week 1** | Project-level conceptual overview                    | ✅ Done (Ch 1–7 + workspace refresh + NestJS/TS intro)                                                                                                                                         |
+| **Week 1**     | Foundation: NestJS monorepo + Hello World API        | ✅ Done (skeleton running, lint+format, Docker stack live)                                                                                                                                     |
+| **Week 2**     | Prisma + database lib + first migration + /health/db | ✅ Done (4 tables migrated, pgvector active, DB health green)                                                                                                                                  |
+| **Week 3**     | Auth & Users (signup, login, JWT, refresh, RBAC)     | ✅ **DONE** — Phases A+B+C+D live and verified end-to-end with multi-user curl scenarios                                                                                                       |
+| **Week 4**     | Agents & Tools                                       | ✅ **DONE** — schema migrated, Agents+Tools+attachments CRUD live and verified                                                                                                                 |
+| **Week 5–6**   | Knowledge Base & RAG                                 | ✅ **DONE** — full pipeline live: KB CRUD + documents + embeddings + worker + indexing + vector search verified end-to-end. Only multipart file upload deferred (text upload covers learning). |
+| **Week 7–8**   | Agent Runtime Engine                                 | ✅ **DONE** — All 4 phases live: libs/llm, Thread/Message/Run schema, RunsService reasoning loop, sync POST /agents/:id/runs endpoint verified end-to-end                                      |
+| **Week 9**     | Streaming & Async                                    | 🟡 **READY TO START** — needs SSE + BullMQ async runs                                                                                                                                          |
+| Week 10        | Memory System                                        | ⬜ Pending                                                                                                                                                                                     |
+| Week 11        | Observability & Webhooks                             | ⬜ Pending                                                                                                                                                                                     |
+| Week 12        | Polish & Deployment                                  | ⬜ Pending                                                                                                                                                                                     |
 
 ---
 
@@ -659,10 +659,12 @@ feat(database): add Agent, Tool, AgentTool models + ToolType enum
    - Workspace.knowledgeBases and Agent.knowledgeBases relations
 
 3. **Migration `knowledge_bases`** generated via `prisma migrate diff` and applied. Manually appended raw SQL:
+
    ```sql
    CREATE INDEX "document_chunks_embedding_idx"
      ON "document_chunks" USING hnsw ("embedding" vector_cosine_ops);
    ```
+
    Verified live: 12 tables in DB, HNSW index visible in `pg_indexes`.
 
 4. **KnowledgeBasesModule** built end-to-end:
@@ -825,7 +827,7 @@ feat(embeddings): add libs/embeddings with mock + OpenAI providers
     semantic results
    ```
 
-### Concepts Locked This Session 
+### Concepts Locked This Session
 
 -Why ORDER BY distance (HNSW-friendly), SELECT similarity (UI-friendly)
 -Workspace-scoping a vector search — JOIN documents and filter `knowledgeBaseId`
@@ -834,7 +836,7 @@ feat(embeddings): add libs/embeddings with mock + OpenAI providers
 -Decimal-string conversion: pg `numeric` columns return as strings — coerce explicitly
 -Tradeoff between SQL-side and TS-side filtering for thresholds (TS simpler, SQL faster on huge datasets)
 
-### Commits Made This Session (~2 atomic commits) 
+### Commits Made This Session (~2 atomic commits)
 
 ```
 feat(kb): add POST /knowledge-bases/:id/search endpoint
@@ -986,6 +988,7 @@ feat(database): add Thread, Message, Run models + enums
 5. **TypeScript fix:** `String.replace` callback args type as `any` in NestJS strict mode, breaking `.reduce<unknown>(...)` generic. Rewrote the dotted-key resolver as an explicit `for` loop.
 
 6. **🎉 Sanity-tested live (NestJS standalone context):**
+
    ```
    Test 1 — agent with NO tools:
      status=COMPLETED, stepCount=1, tokens 10/8/18, mock reply persisted
