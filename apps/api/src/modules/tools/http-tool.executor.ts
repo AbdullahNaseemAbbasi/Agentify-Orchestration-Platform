@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Tool } from '@prisma/client';
+import { assertUrlIsSafe } from './url-safety.util';
 
 export interface ToolExecutionResult {
   /** Stringified body to send back to the LLM as the tool message content. */
@@ -56,7 +57,7 @@ export class HttpToolExecutor {
     const timer = setTimeout(() => controller.abort(), tool.timeoutMs);
 
     try {
-      const res = await fetch(url, {
+      const res = await this.fetchWithSsrfGuard(url, {
         method: tool.httpMethod.toUpperCase(),
         headers,
         body,
@@ -82,6 +83,36 @@ export class HttpToolExecutor {
     } finally {
       clearTimeout(timer);
     }
+  }
+
+  // ----------------------------------------------
+  // Network
+  // ----------------------------------------------
+
+  /**
+   * Fetch that runs the SSRF guard before every hop. `redirect: 'manual'`
+   * is used so a public URL cannot 3xx-redirect us into an internal
+   * address — each redirect target is re-validated before we follow it.
+   */
+  private async fetchWithSsrfGuard(initialUrl: string, init: RequestInit): Promise<Response> {
+    const MAX_REDIRECTS = 3;
+    let currentUrl = initialUrl;
+
+    for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
+      await assertUrlIsSafe(currentUrl);
+      const res = await fetch(currentUrl, { ...init, redirect: 'manual' });
+
+      // Anything outside 3xx is the real response — hand it back.
+      if (res.status < 300 || res.status >= 400) return res;
+
+      const location = res.headers.get('location');
+      if (!location) return res; // redirect with no target — return as-is
+
+      currentUrl = new URL(location, currentUrl).toString();
+      this.logger.log(`Tool redirect -> ${currentUrl}`);
+    }
+
+    throw new Error(`too many redirects (> ${MAX_REDIRECTS})`);
   }
 
   // ----------------------------------------------
