@@ -6,7 +6,7 @@
 
 ## 📅 Last Updated
 
-**2026-04-29** — End of Session 16 (**WEEK 7-8 COMPLETE** — Conversational AI live via HTTP)
+**2026-05-20** — End of Session 17 (deep project re-analysis + SSRF security hardening)
 
 ---
 
@@ -1019,48 +1019,144 @@ feat(tools): add HttpToolExecutor for runtime tool calls
 
 ---
 
+---
+
+## 📚 Session 16 Log (2026-04-29 — Week 7-8 Phase D, WEEK 7-8 COMPLETE)
+
+> _Note: yeh log Session 17 mein code se reconstruct kiya gaya — Session 16 ke
+> waqt log section likhna reh gaya tha. Substance code se verified hai._
+
+### Kya Hua
+
+1. **`CreateRunDto`** — `input` (required, 1..10_000 chars) + optional `threadId`
+   (UUID v4). Lives in `apps/api/src/modules/runs/dto/create-run.dto.ts`.
+
+2. **`RunsController`** — thin HTTP surface over `RunsService`:
+   - `POST /agents/:agentId/runs` — `@HttpCode(200)`, guarded by
+     JwtAuthGuard + WorkspaceGuard + RolesGuard, role >= MEMBER. Returns
+     `{ run, message }`.
+   - `GET /runs/:id` — workspace-scoped run lookup (status polling).
+   - `agentId` / `id` validated with `ParseUUIDPipe({ version: '4' })`.
+
+3. **Module wiring** — controller registered in `RunsModule`; `RunsModule`
+   already imported by `AppModule` from Phase C.
+
+4. **🎉 Conversational AI live via HTTP** — synchronous agent run ab ek
+   real REST endpoint se chal raha hai end-to-end (mock provider).
+
+### Concepts Locked This Session
+
+- ✅ Thin controller / fat service separation (controller sirf delegate karta hai)
+- ✅ `@HttpCode(200)` on a POST that is a command, not a resource-create
+- ✅ Sync run endpoint shape — streaming + async Week 9 mein
+
+### Commits Made This Session (~3 atomic commits)
+
+```
+feat(runs): register RunsController in RunsModule
+feat(runs): add RunsController with sync run + get-run endpoints
+feat(runs): add CreateRunDto
+```
+
+---
+
+---
+
+## 📚 Session 17 Log (2026-05-20 — deep re-analysis + SSRF hardening)
+
+### Kya Hua
+
+1. **Poore project ka deep analysis** — saari `.md` files, Prisma schema,
+   aur core source files (runs.service, llm.service, search.service,
+   http-tool.executor, document.processor) line-by-line review hue.
+
+2. **Documentation gap pakra:** PROGRESS.md ka top "Session 16 complete"
+   keh raha tha par Session 16 ka log section likha hi nahi gaya tha, aur
+   Resume Point abhi tak Phase D ko "next step" bata raha tha jabke Phase D
+   ban chuka hai. → Session 16 log reconstruct kiya, Resume Point Week 9 pe
+   update kiya.
+
+3. **🔒 SSRF security hole fix (spec §12.2):**
+   - **Masla:** `HttpToolExecutor` user-defined tool URL ko bina kisi check
+     ke `fetch` kar raha tha — agent ko `http://169.254.169.254/` (cloud
+     metadata) ya `http://localhost:5433` (internal Postgres) hit karne ke
+     liye trick kiya ja sakta tha.
+   - **`url-safety.util.ts`** — naya file. `assertUrlIsSafe(url)`:
+     scheme http(s) enforce karta hai, literal private IPs reject karta hai,
+     aur hostname ko DNS resolve karke har A/AAAA record check karta hai
+     (public domain jo internal IP pe resolve ho — woh bhi block).
+   - **`fetchWithSsrfGuard`** — executor ab har request isi se bhejta hai.
+     `redirect: 'manual'` use hota hai taake public URL `3xx`-redirect karke
+     server ko internal address pe na le ja sake; har hop dobara validate
+     hoti hai (max 3 redirects).
+   - Verified: `npm run build` dono apps clean, ESLint + tsc clean.
+
+### Concepts Locked This Session
+
+- ✅ SSRF (Server-Side Request Forgery) — kya hai, kyun khatarnak hai
+- ✅ Cloud metadata endpoint (169.254.169.254) credential-leak vector
+- ✅ Private/reserved IP ranges (IPv4 + IPv6 ULA / link-local / v4-mapped)
+- ✅ DNS-resolve-then-check pattern + DNS rebinding ka residual limitation
+- ✅ Manual redirect handling (`redirect: 'manual'`) as an SSRF defense
+- ✅ "Fail closed" — malformed input ko unsafe treat karna
+
+### Open Gaps Flagged (future work, abhi pending)
+
+- API Keys module + `ApiKey` Prisma model (spec §8.3) — abhi missing
+- `httpAuthValue` plaintext store hota hai — production encryption chahiye (§19.2)
+- HTTP tool response 1 MiB cap (`res.text()` unbounded — DoS risk, §12.2)
+- Context-window management / summarization (§10.2) — missing
+- Run cancellation (`POST /runs/:id/cancel` + Redis cancel-key) — missing
+- `UsageEvent` / `TraceSpan` / `Memory` / `WebhookEndpoint` / `AuditLog`
+  models abhi schema mein nahi
+- PROJECT.md §7 stale — root path aur shell (ab Windows/PowerShell) update karna
+
+### Commits Made This Session (~3 atomic commits)
+
+```
+feat(tools): add SSRF URL safety guard
+fix(tools): block private/internal URLs in HTTP tool executor
+docs: add Session 16 + 17 logs, update resume point to Week 9
+```
+
+---
+
+---
+
 ## 🎬 Next Session — Resume Point
 
-**Where we left off:** Abdullah ne quiz ke answers diye, feedback mila, "Acme" ka meaning clarified. User ne ghar jaane se pehle CLAUDE.md + PROGRESS.md update karne ko kaha hai.
+**Where we left off (end of Session 17):** Weeks 1–8 complete — auth, workspaces/RBAC, agents/tools, KB/RAG, aur sync agent runtime sab live. Session 17 mein deep re-analysis hua aur SSRF security hole fix kiya gaya. Ab roadmap ka agla padav = **Week 9 — Streaming & Async**.
 
-**Where we left off (end of Session 15):** Phase C complete. Reasoning loop is live and sanity-tested with both no-tool and tool-using paths. Real HTTP tool execution verified against httpbin. Final piece needed = **Phase D**: a thin HTTP controller exposing `POST /agents/:id/runs`.
+### Next concrete steps (Week 9 — Streaming & Async Runs)
 
-### Next concrete steps (Week 7-8 Phase D — Sync Run Endpoint)
+Re-read **`AGENTIFY_SPEC.md` §15 (SSE)** and **§14 (BullMQ)** before starting.
 
-1. **Runs DTOs:**
-   - `CreateRunDto`: `input` (required, 1..10_000 chars), `threadId?` (optional UUID v4)
+1. **SSE streaming endpoint:**
+   - `POST /v1/agents/:id/runs/stream` → `Content-Type: text/event-stream`
+   - `LlmProvider` ko `completionStream()` (AsyncIterable<chunk>) chahiye —
+     mock provider se shuru karo, phir OpenAI/Anthropic streaming
+   - Event types spec §15 se: `run.created`, `message.delta`, `tool.call`,
+     `run.completed`, `error`
 
-2. **`RunsController`:**
-   - `POST /agents/:agentId/runs` — guarded by JwtAuthGuard + WorkspaceGuard + RolesGuard, role >= MEMBER
-   - Returns `{ run: Run, message: string }` on success
-   - Errors propagate (404 if agent not found, 503 / 500 on LLM failure)
-   - `GET /runs/:id` — read run details (used for polling status in async future)
+2. **Async runs via BullMQ:**
+   - Naya `agent-run` queue (`libs/queue`)
+   - `POST /agents/:id/runs` ko async mode de — `Run` PENDING create karke
+     job enqueue, fauran `run_id` return
+   - `apps/worker` mein `AgentRunProcessor` — reasoning loop worker mein chale
+   - Client `GET /runs/:id` se status poll kare
 
-3. **Module wiring:**
-   - Add controller to RunsModule
-   - Register module in AppModule (already present from Phase C)
-
-4. **Live curl test (mock provider):**
-   ```bash
-   # signup → get token + workspace
-   # create agent + tool + KB + attach
-   # POST /agents/:id/runs with {input: "..."} → see final message
-   # GET /threads/:threadId/messages → see persisted user/assistant/tool order
-   ```
-
-5. **Optional (time permitting):**
-   - Run cancellation — `POST /runs/:id/cancel` setting status=CANCELLED
-   - Better cost estimation table per model
-
-### Week 9 plan (after Phase D)
-
-- SSE streaming endpoint (`POST /agents/:id/runs?stream=true`)
-- Async run via BullMQ queue (defers reasoning loop to worker app)
-- Run cancellation with abort signal propagation
+3. **Run cancellation:**
+   - `POST /runs/:id/cancel` → Redis key `run:cancel:<runId>`
+   - Reasoning loop har LLM call se pehle key check kare → `CANCELLED`
 
 ### Suggested opening message for next session
 
-> "Phase C done — reasoning loop chal raha hai. Aaj Phase D — actual HTTP endpoint. CreateRunDto + RunsController + curl se end-to-end test. End mein aap signup → agent + tool + KB → POST /runs → final answer milega curl se. Ready?"
+> "Weeks 1–8 done, SSRF fix bhi ho gaya. Aaj Week 9 — streaming. Pehle concept: SSE kya hai aur kyun (HTTP streaming vs WebSocket), phir `completionStream()` mock provider mein. Spec §15 padh lein. Ready?"
+
+### Quick wins (agar Week 9 se pehle warm-up chahiye)
+
+- HTTP tool response 1 MiB cap (`res.text()` unbounded — chhota, §12.2)
+- PROJECT.md §7 ka stale root-path + shell update
 
 ### ⚠️ Reminders for Future Claude
 
@@ -1084,11 +1180,11 @@ feat(tools): add HttpToolExecutor for runtime tool calls
 ## 🔖 Commits So Far
 
 Target: 200+ atomic commits.
-Current: **~91 commits locally** (push status owned by Abdullah).
+Current: **~97 commits locally** (push status owned by Abdullah).
 
-S1-S14 totals + S15 (~3).
+S1-S15 totals + S16 (~3) + S17 (~3).
 
-Health: ~46% of the way to 200+ goal after 15 sessions. Weeks 1-6 done; Week 7-8 Phases A+B+C done. On track for 12-week MVP.
+Health: ~48% of the way to 200+ goal after 17 sessions. Weeks 1-8 fully done. On track for 12-week MVP — next is Week 9 (Streaming & Async).
 
 ---
 
