@@ -9,6 +9,7 @@ import {
   LlmToolCall,
   LlmToolDefinition,
 } from '@agentify/llm';
+import { RedisService } from '@agentify/cache';
 import { SearchService } from '../knowledge-bases/search.service';
 import { HttpToolExecutor } from '../tools/http-tool.executor';
 
@@ -63,12 +64,39 @@ export class RunsService {
     private readonly llm: LlmService,
     private readonly search: SearchService,
     private readonly toolExecutor: HttpToolExecutor,
+    private readonly redis: RedisService,
   ) {}
 
   async findById(workspaceId: string, id: string): Promise<Run> {
     const run = await this.prisma.run.findFirst({ where: { id, workspaceId } });
     if (!run) throw new NotFoundException('Run not found');
     return run;
+  }
+
+  /**
+   * Request cancellation of an in-flight run. Sets a short-lived Redis
+   * flag that both the sync and streaming reasoning loops poll before
+   * each LLM call. Being in Redis (not memory) means an async run that
+   * executes in the worker process is reachable too (spec §10.4).
+   * No-op when the run has already reached a terminal state.
+   */
+  async requestCancel(workspaceId: string, runId: string): Promise<Run> {
+    const run = await this.findById(workspaceId, runId);
+    const terminal: Run['status'][] = ['COMPLETED', 'FAILED', 'CANCELLED', 'TIMEOUT'];
+    if (!terminal.includes(run.status)) {
+      await this.redis.set(this.cancelKey(runId), '1', 3600);
+      this.logger.log(`Cancellation requested for run ${runId}`);
+    }
+    return run;
+  }
+
+  private cancelKey(runId: string): string {
+    return `run:cancel:${runId}`;
+  }
+
+  /** True once `requestCancel` has flagged this run. */
+  private isCancelRequested(runId: string): Promise<boolean> {
+    return this.redis.exists(this.cancelKey(runId));
   }
 
   /**
@@ -112,9 +140,16 @@ export class RunsService {
       const totals = { inputTokens: 0, outputTokens: 0, totalTokens: 0 };
       let finalContent = '';
       let finished = false;
+      let cancelled = false;
 
       for (let step = 0; step < agent.maxSteps; step++) {
         stepCount = step + 1;
+
+        // Poll the cancel flag before every LLM call (spec §10.4).
+        if (await this.isCancelRequested(run.id)) {
+          cancelled = true;
+          break;
+        }
 
         const req: LlmCompletionRequest = {
           model: agent.model,
@@ -162,7 +197,7 @@ export class RunsService {
         break;
       }
 
-      const finalStatus = finished ? 'COMPLETED' : 'TIMEOUT';
+      const finalStatus = cancelled ? 'CANCELLED' : finished ? 'COMPLETED' : 'TIMEOUT';
       const updated = await this.prisma.run.update({
         where: { id: run.id },
         data: {
@@ -173,9 +208,11 @@ export class RunsService {
           inputTokens: totals.inputTokens,
           outputTokens: totals.outputTokens,
           totalTokens: totals.totalTokens,
-          errorMessage: finished
-            ? null
-            : `Reached maxSteps (${agent.maxSteps}) without a final answer`,
+          errorMessage: cancelled
+            ? 'Run cancelled by request'
+            : finished
+              ? null
+              : `Reached maxSteps (${agent.maxSteps}) without a final answer`,
         },
       });
 
@@ -241,9 +278,16 @@ export class RunsService {
       let stepCount = 0;
       const totals = { inputTokens: 0, outputTokens: 0, totalTokens: 0 };
       let finished = false;
+      let cancelled = false;
 
       for (let step = 0; step < agent.maxSteps; step++) {
         stepCount = step + 1;
+
+        // Poll the cancel flag before every LLM call (spec §10.4).
+        if (await this.isCancelRequested(run.id)) {
+          cancelled = true;
+          break;
+        }
 
         const req: LlmCompletionRequest = {
           model: agent.model,
@@ -314,16 +358,18 @@ export class RunsService {
       const updated = await this.prisma.run.update({
         where: { id: run.id },
         data: {
-          status: finished ? 'COMPLETED' : 'TIMEOUT',
+          status: cancelled ? 'CANCELLED' : finished ? 'COMPLETED' : 'TIMEOUT',
           completedAt: finished ? new Date() : null,
           failedAt: finished ? null : new Date(),
           stepCount,
           inputTokens: totals.inputTokens,
           outputTokens: totals.outputTokens,
           totalTokens: totals.totalTokens,
-          errorMessage: finished
-            ? null
-            : `Reached maxSteps (${agent.maxSteps}) without a final answer`,
+          errorMessage: cancelled
+            ? 'Run cancelled by request'
+            : finished
+              ? null
+              : `Reached maxSteps (${agent.maxSteps}) without a final answer`,
         },
       });
 
