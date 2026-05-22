@@ -6,7 +6,7 @@
 
 ## 📅 Last Updated
 
-**2026-05-22** — End of Session 18 (Week 9 Phase 1 — SSE streaming live end-to-end)
+**2026-05-22** — End of Session 19 (Week 9 — run cancellation live; only BullMQ async runs left)
 
 ---
 
@@ -23,7 +23,7 @@ Hum `AGENTIFY_SPEC.md` §22 ke 12-week roadmap follow kar rahe hain.
 | **Week 4**     | Agents & Tools                                       | ✅ **DONE** — schema migrated, Agents+Tools+attachments CRUD live and verified                                                                                                                 |
 | **Week 5–6**   | Knowledge Base & RAG                                 | ✅ **DONE** — full pipeline live: KB CRUD + documents + embeddings + worker + indexing + vector search verified end-to-end. Only multipart file upload deferred (text upload covers learning). |
 | **Week 7–8**   | Agent Runtime Engine                                 | ✅ **DONE** — All 4 phases live: libs/llm, Thread/Message/Run schema, RunsService reasoning loop, sync POST /agents/:id/runs endpoint verified end-to-end                                      |
-| **Week 9**     | Streaming & Async                                    | 🟡 **IN PROGRESS** — SSE streaming DONE (provider streaming + executeStream + endpoint); BullMQ async runs + run cancellation still pending                                                    |
+| **Week 9**     | Streaming & Async                                    | 🟡 **IN PROGRESS** — SSE streaming + run cancellation DONE; only BullMQ async runs left (needs an architecture decision — see Resume Point)                                                    |
 | Week 10        | Memory System                                        | ⬜ Pending                                                                                                                                                                                     |
 | Week 11        | Observability & Webhooks                             | ⬜ Pending                                                                                                                                                                                     |
 | Week 12        | Polish & Deployment                                  | ⬜ Pending                                                                                                                                                                                     |
@@ -1205,38 +1205,102 @@ feat(runs): add SSE streaming endpoint POST /agents/:id/runs/stream
 
 ---
 
+## 📚 Session 19 Log (2026-05-22 — Week 9 Phase 3: Run Cancellation)
+
+### Kya Hua
+
+1. **Concept**: cancellation = chalti run ko beech mein rokna. Signal
+   Redis mein (in-memory nahi) — kyunki aage async run alag worker
+   process mein chalegi, cancel request API se aayegi (spec §10.4).
+
+2. **`libs/cache` — naya shared lib:**
+   - `RedisService` — ioredis connection wrapper (`set` + optional TTL,
+     `exists`, `del`); `onModuleDestroy` par connection band.
+   - `@Global() CacheModule` — koi bhi module `RedisService` inject kar
+     sakta hai.
+   - `@agentify/cache` path alias + package scaffold.
+
+3. **`RunsService` cancellation:**
+   - `requestCancel(workspaceId, runId)` — run terminal nahi hai to
+     Redis key `run:cancel:<id>` (1h TTL) set karta hai.
+   - `isCancelRequested()` — `EXISTS` check.
+   - `execute()` aur `executeStream()` dono ke loop har LLM call se
+     pehle flag poll karte hain → set hua to `CANCELLED` ho kar exit.
+
+4. **`RunsController`:**
+   - `POST /runs/:id/cancel` — idempotent cancel endpoint.
+   - SSE handler: client disconnect par loop **break nahi** karta —
+     `requestCancel` call karta hai, run apna step poora karke khud ko
+     `CANCELLED` mark karta hai (clean), bas dead socket par likhna
+     band kar deta hai.
+
+5. Build dono apps green har step pe.
+
+### Concepts Locked This Session
+
+- ✅ Cooperative cancellation (loop khud flag check karta hai — thread
+  ko zabardasti kill nahi karte)
+- ✅ Redis ephemeral flags as a cross-process signal
+- ✅ TTL keys — self-cleaning, koi manual cleanup nahi
+- ✅ "Fail safe" disconnect — break ke bajaye graceful cancel
+- ✅ Naya shared lib banane ka pattern (package.json + tsconfig.lib +
+  path alias + barrel)
+
+### Open Gaps
+
+- BullMQ async runs — Week 9 ka aakhri hissa; ek architecture decision
+  pending hai (worker reasoning loop kaise reuse kare). Resume Point dekho.
+- Worker ko abhi `CacheModule` import nahi — async runs ke waqt chahiye hoga.
+
+### Commits Made This Session (~8 atomic commits)
+
+```
+chore: scaffold libs/cache package
+feat(cache): add RedisService wrapping ioredis
+feat(cache): add global CacheModule and barrel export
+feat(api): wire CacheModule into AppModule
+feat(runs): add run cancellation to the reasoning loops
+chore: remove scratch streaming test script
+feat(runs): add POST /runs/:id/cancel and cancel-on-disconnect
+```
+
+---
+
+---
+
 ## 🎬 Next Session — Resume Point
 
-**Where we left off (end of Session 18):** Week 9 Phase 1 (SSE streaming) complete — `libs/llm` ke teeno providers streaming karte hain, `RunsService.executeStream()` live hai, aur `POST /agents/:id/runs/stream` endpoint chal raha hai. Real-time pacing standalone script se verify hua. **Bachay hue:** BullMQ async runs + run cancellation, aur ek full HTTP curl test.
+**Where we left off (end of Session 19):** Week 9 ke 3 mein se 2 hisse done — SSE streaming + run cancellation dono live. Sirf **BullMQ async runs** baqi hai.
 
-### Next concrete steps (Week 9 — remaining)
+### ⚠️ Architecture decision pending — async runs
+
+Async run worker process (`apps/worker`) mein chalegi, par poora reasoning
+loop (`RunsService.execute`) `apps/api` ke andar hai. Worker isay reuse
+kaise kare? 3 options:
+
+- **A — runtime ko shared lib mein nikalo** (`libs/runtime`): saaf, dono
+  apps reuse karte hain. Sabse bada refactor (RunsService + SearchService
+  - HttpToolExecutor lib mein shift).
+- **B — `AgentRunProcessor` `apps/api` ke andar**: API hi `agent-run`
+  queue consume kare. Refactor zero, lekin "alag worker process" spec
+  §4 se halka deviation.
+- **C — loop worker mein duplicate karo**: jaldi, par DRY toot-ta hai
+  (DocumentProcessor wala pattern, magar loop bahut bada hai).
+
+Abdullah se poochhna hai shuru karne se pehle.
+
+### Next concrete steps (Week 9 — async runs, decision ke baad)
 
 Re-read **`AGENTIFY_SPEC.md` §14 (BullMQ)** before starting.
 
-1. **Full HTTP test of streaming (pehle yeh — quick):**
-   - Docker up → migrate → `apps/api` start
-   - signup → agent create → `curl -N POST /agents/:id/runs/stream`
-   - deltas real-time aate dikhne chahiye, phir `run.completed`
-
-2. **Async runs via BullMQ:**
-   - Naya `agent-run` queue (`libs/queue`)
-   - `POST /agents/:id/runs` ko async mode de (`?async=true` ya alag route) —
-     `Run` PENDING create karke job enqueue, fauran `run_id` return
-   - `apps/worker` mein `AgentRunProcessor` — `RunsService.execute()` worker
-     mein chale; client `GET /runs/:id` se status poll kare
-
-3. **Run cancellation:**
-   - `POST /runs/:id/cancel` → Redis key `run:cancel:<runId>`
-   - Reasoning loop (`execute` + `executeStream`) har LLM call se pehle key
-     check kare → `CANCELLED`
-   - SSE disconnect (`res.on('close')`) bhi run ko `CANCELLED` kare
-
-### Suggested opening message for next session
-
-> "Week 9 streaming done — provider streaming + executeStream + SSE endpoint live, real-time verify ho gaya. Aaj: pehle ek live curl test `/runs/stream` ka (Docker up karke), phir BullMQ async runs. Spec §14 padh lein. Ready?"
+1. `agent-run` queue + job type (`libs/queue`)
+2. API: async run enqueue — `Run` PENDING create, job enqueue, `run_id` return
+3. Chosen architecture ke mutabiq worker-side run executor
+4. Client `GET /runs/:id` se status poll
 
 ### Quick wins (warm-up ke liye)
 
+- Full HTTP curl test (Docker up): sync + stream + cancel teeno
 - HTTP tool response 1 MiB cap (`res.text()` unbounded — chhota, §12.2)
 - PROJECT.md §7 ka stale root-path + shell update
 
@@ -1262,11 +1326,11 @@ Re-read **`AGENTIFY_SPEC.md` §14 (BullMQ)** before starting.
 ## 🔖 Commits So Far
 
 Target: 200+ atomic commits.
-Current: **~106 commits locally** (push status owned by Abdullah).
+Current: **~114 commits locally** (push status owned by Abdullah).
 
-S1-S15 totals + S16 (~3) + S17 (~3) + S18 (~9).
+S1-S15 totals + S16 (~3) + S17 (~3) + S18 (~9) + S19 (~8).
 
-Health: ~53% of the way to 200+ goal after 18 sessions. Weeks 1-8 fully done; Week 9 Phase 1 (SSE streaming) done. On track for 12-week MVP.
+Health: ~57% of the way to 200+ goal after 19 sessions. Weeks 1-8 fully done; Week 9 SSE streaming + run cancellation done, only async runs left. On track for 12-week MVP.
 
 ---
 
