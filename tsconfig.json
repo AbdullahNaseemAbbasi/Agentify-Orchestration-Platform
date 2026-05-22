@@ -33,7 +33,9 @@
       "@agentify/queue": ["libs/queue/src"],
       "@agentify/queue/*": ["libs/queue/src/*"],
       "@agentify/llm": ["libs/llm/src"],
-      "@agentify/llm/*": ["libs/llm/src/*"]
+      "@agentify/llm/*": ["libs/llm/src/*"],
+      "@agentify/runtime": ["libs/runtime/src"],
+      "@agentify/runtime/*": ["libs/runtime/src/*"]
     }
   },
   "exclude": ["node_modules", "dist"]

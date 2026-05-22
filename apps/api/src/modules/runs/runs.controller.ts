@@ -17,8 +17,8 @@ import { Roles } from '../../common/decorators/roles.decorator';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { WorkspaceContext, WorkspaceGuard } from '../../common/guards/workspace.guard';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { ExecuteRunResult, RunsService } from '@agentify/runtime';
 import { CreateRunDto } from './dto/create-run.dto';
-import { ExecuteRunResult, RunsService } from './runs.service';
 
 @Controller()
 @UseGuards(JwtAuthGuard, WorkspaceGuard, RolesGuard)

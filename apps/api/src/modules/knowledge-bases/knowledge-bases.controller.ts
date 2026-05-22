@@ -20,8 +20,8 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CreateKnowledgeBaseDto } from './dto/create-knowledge-base.dto';
 import { SearchDto } from './dto/search.dto';
 import { UpdateKnowledgeBaseDto } from './dto/update-knowledge-base.dto';
+import { SearchHit, SearchService } from '@agentify/runtime';
 import { KnowledgeBasesService } from './knowledge-bases.service';
-import { SearchHit, SearchService } from './search.service';
 
 @Controller('knowledge-bases')
 @UseGuards(JwtAuthGuard, WorkspaceGuard, RolesGuard)
@@ -83,12 +83,6 @@ export class KnowledgeBasesController {
     @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
     @Body() dto: SearchDto,
   ): Promise<SearchHit[]> {
-    return this.searchService.searchSimilar(
-      ws.id,
-      id,
-      dto.query,
-      dto.topK,
-      dto.minSimilarity,
-    );
+    return this.searchService.searchSimilar(ws.id, id, dto.query, dto.topK, dto.minSimilarity);
   }
 }

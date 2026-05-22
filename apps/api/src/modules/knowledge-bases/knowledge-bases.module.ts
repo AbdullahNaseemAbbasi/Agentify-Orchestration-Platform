@@ -1,14 +1,13 @@
 import { Module } from '@nestjs/common';
-import { EmbeddingsModule } from '@agentify/embeddings';
+import { RuntimeModule } from '@agentify/runtime';
 import { WorkspacesModule } from '../workspaces/workspaces.module';
 import { KnowledgeBasesController } from './knowledge-bases.controller';
 import { KnowledgeBasesService } from './knowledge-bases.service';
-import { SearchService } from './search.service';
 
 @Module({
-  imports: [WorkspacesModule, EmbeddingsModule],
+  imports: [WorkspacesModule, RuntimeModule], // RuntimeModule provides SearchService
   controllers: [KnowledgeBasesController],
-  providers: [KnowledgeBasesService, SearchService],
-  exports: [KnowledgeBasesService, SearchService],
+  providers: [KnowledgeBasesService],
+  exports: [KnowledgeBasesService],
 })
 export class KnowledgeBasesModule {}

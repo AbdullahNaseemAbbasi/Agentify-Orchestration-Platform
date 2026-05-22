@@ -10,8 +10,8 @@ import {
   LlmToolDefinition,
 } from '@agentify/llm';
 import { RedisService } from '@agentify/cache';
-import { SearchService } from '../knowledge-bases/search.service';
-import { HttpToolExecutor } from '../tools/http-tool.executor';
+import { SearchService } from './search.service';
+import { HttpToolExecutor } from './http-tool.executor';
 
 export interface ExecuteRunResult {
   run: Run;
