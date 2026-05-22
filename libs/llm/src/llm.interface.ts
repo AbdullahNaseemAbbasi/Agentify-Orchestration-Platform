@@ -7,11 +7,11 @@
 
 export type LlmRole = 'system' | 'user' | 'assistant' | 'tool';
 
-export interface LlmToolCall {   
-  id: string; 
+export interface LlmToolCall {
+  id: string;
   name: string;
   /** Stringified JSON arguments — mirrors OpenAI tool_calls.function.arguments. */
-  arguments: string; 
+  arguments: string;
 }
 
 export interface LlmMessage {
@@ -61,9 +61,37 @@ export interface LlmCompletionResponse {
   modelId: string;
 }
 
+/**
+ * One event emitted while a completion streams.
+ *
+ * A provider yields zero or more `delta` chunks (incremental assistant
+ * text, as it is produced) followed by exactly one `done` chunk that
+ * carries the fully-assembled message, token usage and finish reason.
+ *
+ * Tool calls are NOT streamed token-by-token: the runtime needs a
+ * complete call to execute it, so providers assemble them internally
+ * and deliver them on the `done` chunk.
+ */
+export type LlmStreamChunk =
+  | { type: 'delta'; content: string }
+  | {
+      type: 'done';
+      message: LlmMessage;
+      usage: LlmUsage;
+      finishReason: LlmFinishReason;
+      modelId: string;
+    };
+
 export interface LlmProvider {
   /** Lowercased provider key as stored on Agent.provider (e.g. "openai"). */
   readonly providerKey: string;
 
   complete(req: LlmCompletionRequest): Promise<LlmCompletionResponse>;
+
+  /**
+   * Streaming variant of `complete`. Yields incremental text as the
+   * model produces it, then a single final `done` chunk. Lets the API
+   * forward tokens to the client in real time (SSE).
+   */
+  completionStream(req: LlmCompletionRequest): AsyncIterable<LlmStreamChunk>;
 }
