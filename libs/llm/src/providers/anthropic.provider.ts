@@ -4,8 +4,10 @@ import {
   LlmFinishReason,
   LlmMessage,
   LlmProvider,
+  LlmStreamChunk,
   LlmToolCall,
 } from '../llm.interface';
+import { parseSseStream } from './sse-stream.util';
 
 export interface AnthropicProviderConfig {
   apiKey: string;
@@ -29,6 +31,20 @@ interface AnthropicResponse {
   content: AnthropicContentBlock[];
   stop_reason: string;
   usage: { input_tokens: number; output_tokens: number };
+}
+
+/**
+ * One Server-Sent-Event from the streaming Messages API. The `type`
+ * field discriminates: message_start, content_block_start /
+ * _delta / _stop, message_delta, message_stop, ping.
+ */
+interface AnthropicStreamEvent {
+  type: string;
+  index?: number;
+  message?: { usage?: { input_tokens?: number; output_tokens?: number } };
+  content_block?: { type: string; id?: string; name?: string };
+  delta?: { type?: string; text?: string; partial_json?: string; stop_reason?: string };
+  usage?: { input_tokens?: number; output_tokens?: number };
 }
 
 /**
@@ -120,6 +136,99 @@ export class AnthropicLlmProvider implements LlmProvider {
     };
   }
 
+  async *completionStream(req: LlmCompletionRequest): AsyncIterable<LlmStreamChunk> {
+    const { system, messages } = this.splitSystem(req.messages);
+
+    const body: Record<string, unknown> = {
+      model: req.model,
+      messages: messages.map((m) => this.toAnthropicMessage(m)),
+      max_tokens: req.maxTokens ?? 4096,
+      temperature: req.temperature,
+      top_p: req.topP,
+      stream: true,
+    };
+    if (system) body.system = system;
+    if (req.tools && req.tools.length > 0) {
+      body.tools = req.tools.map((t) => ({
+        name: t.name,
+        description: t.description,
+        input_schema: t.parameters,
+      }));
+      if (req.toolChoice) body.tool_choice = this.toAnthropicToolChoice(req.toolChoice);
+    }
+
+    const res = await fetch(`${this.baseUrl}/messages`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': this.apiKey,
+        'anthropic-version': this.apiVersion,
+      },
+      body: JSON.stringify(this.stripUndefined(body)),
+    });
+    if (!res.ok || !res.body) {
+      throw new Error(`Anthropic API error ${res.status}: ${await res.text()}`);
+    }
+
+    let content = '';
+    // Each content block sits at an `index`; a tool_use block builds up
+    // its JSON arguments across successive input_json_delta events.
+    const toolDrafts = new Map<number, { id: string; name: string; arguments: string }>();
+    let finishReason: LlmFinishReason = 'stop';
+    let inputTokens = 0;
+    let outputTokens = 0;
+
+    for await (const data of parseSseStream(res.body)) {
+      const ev = JSON.parse(data) as AnthropicStreamEvent;
+
+      switch (ev.type) {
+        case 'message_start':
+          inputTokens = ev.message?.usage?.input_tokens ?? 0;
+          break;
+        case 'content_block_start':
+          if (ev.content_block?.type === 'tool_use' && ev.index !== undefined) {
+            toolDrafts.set(ev.index, {
+              id: ev.content_block.id ?? '',
+              name: ev.content_block.name ?? '',
+              arguments: '',
+            });
+          }
+          break;
+        case 'content_block_delta':
+          if (ev.delta?.type === 'text_delta' && ev.delta.text) {
+            content += ev.delta.text;
+            yield { type: 'delta', content: ev.delta.text };
+          } else if (ev.delta?.type === 'input_json_delta' && ev.index !== undefined) {
+            const draft = toolDrafts.get(ev.index);
+            if (draft) draft.arguments += ev.delta.partial_json ?? '';
+          }
+          break;
+        case 'message_delta':
+          if (ev.delta?.stop_reason) finishReason = this.mapStopReason(ev.delta.stop_reason);
+          if (ev.usage?.output_tokens !== undefined) outputTokens = ev.usage.output_tokens;
+          break;
+        // content_block_stop / message_stop / ping need no handling.
+      }
+    }
+
+    const toolCalls: LlmToolCall[] | undefined =
+      toolDrafts.size > 0
+        ? [...toolDrafts.values()].map((d) => ({
+            id: d.id,
+            name: d.name,
+            arguments: d.arguments || '{}',
+          }))
+        : undefined;
+
+    yield {
+      type: 'done',
+      message: { role: 'assistant', content, toolCalls },
+      usage: { inputTokens, outputTokens, totalTokens: inputTokens + outputTokens },
+      finishReason,
+      modelId: `anthropic:${req.model}`,
+    };
+  }
+
   // ----------------------------------------------
   // Adapters
   // ----------------------------------------------
@@ -137,9 +246,7 @@ export class AnthropicLlmProvider implements LlmProvider {
     if (m.role === 'tool') {
       return {
         role: 'user',
-        content: [
-          { type: 'tool_result', tool_use_id: m.toolCallId, content: m.content },
-        ],
+        content: [{ type: 'tool_result', tool_use_id: m.toolCallId, content: m.content }],
       };
     }
     // Assistant message with tool calls: rebuild content blocks.
