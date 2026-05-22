@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
+import { CacheModule } from '@agentify/cache';
 import { DatabaseModule } from '@agentify/database';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
@@ -22,6 +23,7 @@ import { WorkspacesModule } from './modules/workspaces/workspaces.module';
   imports: [
     ConfigModule.forRoot({ isGlobal: true, cache: true }),
     DatabaseModule,
+    CacheModule,
     EmbeddingsModule,
     LlmModule,
     QueueModule.forRoot(),
