@@ -5,6 +5,7 @@ import {
   LlmCompletionRequest,
   LlmMessage,
   LlmService,
+  LlmStreamChunk,
   LlmToolCall,
   LlmToolDefinition,
 } from '@agentify/llm';
@@ -15,6 +16,22 @@ export interface ExecuteRunResult {
   run: Run;
   /** Final assistant message content. Empty string when the loop hit maxSteps. */
   message: string;
+}
+
+/** Names of the events emitted over SSE while a run streams (spec §15.1). */
+export type RunStreamEventName =
+  | 'run.created'
+  | 'message.delta'
+  | 'tool_call.started'
+  | 'tool_call.completed'
+  | 'message.completed'
+  | 'run.completed'
+  | 'error';
+
+/** One Server-Sent-Event produced by `executeStream`. */
+export interface RunStreamEvent {
+  event: RunStreamEventName;
+  data: Record<string, unknown>;
 }
 
 interface AgentWithRelations {
@@ -180,6 +197,167 @@ export class RunsService {
     }
   }
 
+  /**
+   * Streaming sibling of `execute`. Runs the same reasoning loop but,
+   * instead of returning once at the end, yields SSE events as they
+   * happen: a `message.delta` per token, `tool_call.*` around each tool
+   * invocation, and a final `run.completed`. A failure becomes a single
+   * `error` event rather than a thrown exception, because the HTTP
+   * response has already started streaming.
+   */
+  async *executeStream(
+    workspaceId: string,
+    agentId: string,
+    threadId: string | undefined,
+    userInput: string,
+  ): AsyncGenerator<RunStreamEvent> {
+    let run: Run | undefined;
+    try {
+      const prepared = await this.prepareRun(workspaceId, agentId, threadId, userInput);
+      run = prepared.run;
+      const { agent, thread } = prepared;
+
+      yield {
+        event: 'run.created',
+        data: { run_id: run.id, thread_id: thread.id, status: 'IN_PROGRESS' },
+      };
+
+      const userMsg = await this.prisma.message.create({
+        data: { threadId: thread.id, runId: run.id, role: 'USER', content: userInput },
+      });
+      const history = await this.prisma.message.findMany({
+        where: { threadId: thread.id, NOT: { id: userMsg.id } },
+        orderBy: { createdAt: 'asc' },
+      });
+
+      const ragContext = await this.buildRagContext(agent, userInput);
+      const llmMessages: LlmMessage[] = [
+        { role: 'system', content: this.composeSystemPrompt(agent.systemPrompt, ragContext) },
+        ...history.map((m) => this.toLlmMessage(m)),
+        { role: 'user', content: userInput },
+      ];
+      const tools = this.buildToolDefinitions(agent);
+
+      let stepCount = 0;
+      const totals = { inputTokens: 0, outputTokens: 0, totalTokens: 0 };
+      let finished = false;
+
+      for (let step = 0; step < agent.maxSteps; step++) {
+        stepCount = step + 1;
+
+        const req: LlmCompletionRequest = {
+          model: agent.model,
+          messages: llmMessages,
+          tools: tools.length > 0 ? tools : undefined,
+          toolChoice: tools.length > 0 ? agent.toolChoice : undefined,
+          temperature: agent.temperature,
+          maxTokens: agent.maxTokens,
+          topP: agent.topP ?? undefined,
+          responseFormat: (agent.responseFormat as Record<string, unknown> | null) ?? undefined,
+        };
+
+        // Stream the completion: forward each text delta to the client
+        // immediately, and keep the final `done` chunk for persistence.
+        let done: Extract<LlmStreamChunk, { type: 'done' }> | undefined;
+        for await (const chunk of this.llm.completeStream(agent.provider, req)) {
+          if (chunk.type === 'delta') {
+            yield { event: 'message.delta', data: { delta: chunk.content } };
+          } else {
+            done = chunk;
+          }
+        }
+        if (!done) throw new Error('LLM stream ended without a final chunk');
+
+        totals.inputTokens += done.usage.inputTokens;
+        totals.outputTokens += done.usage.outputTokens;
+        totals.totalTokens += done.usage.totalTokens;
+
+        const assistantMsg = await this.prisma.message.create({
+          data: {
+            threadId: thread.id,
+            runId: run.id,
+            role: 'ASSISTANT',
+            content: done.message.content,
+            toolCalls: done.message.toolCalls
+              ? (done.message.toolCalls as unknown as Prisma.InputJsonValue)
+              : undefined,
+          },
+        });
+        llmMessages.push(done.message);
+
+        if (done.finishReason === 'tool_calls' && done.message.toolCalls?.length) {
+          for (const call of done.message.toolCalls) {
+            yield {
+              event: 'tool_call.started',
+              data: { tool: call.name, arguments: call.arguments },
+            };
+            const output = await this.executeOneToolCall(
+              thread.id,
+              run.id,
+              agent,
+              call,
+              llmMessages,
+            );
+            yield { event: 'tool_call.completed', data: { tool: call.name, output } };
+          }
+          continue;
+        }
+
+        finished = true;
+        yield {
+          event: 'message.completed',
+          data: { message_id: assistantMsg.id, content: done.message.content },
+        };
+        break;
+      }
+
+      const updated = await this.prisma.run.update({
+        where: { id: run.id },
+        data: {
+          status: finished ? 'COMPLETED' : 'TIMEOUT',
+          completedAt: finished ? new Date() : null,
+          failedAt: finished ? null : new Date(),
+          stepCount,
+          inputTokens: totals.inputTokens,
+          outputTokens: totals.outputTokens,
+          totalTokens: totals.totalTokens,
+          errorMessage: finished
+            ? null
+            : `Reached maxSteps (${agent.maxSteps}) without a final answer`,
+        },
+      });
+
+      yield {
+        event: 'run.completed',
+        data: {
+          run_id: updated.id,
+          status: updated.status,
+          usage: {
+            input_tokens: totals.inputTokens,
+            output_tokens: totals.outputTokens,
+            total_tokens: totals.totalTokens,
+          },
+        },
+      };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'unknown error';
+      this.logger.error(`Streaming run ${run?.id ?? '(unstarted)'} failed: ${message}`);
+      if (run) {
+        await this.prisma.run
+          .update({
+            where: { id: run.id },
+            data: {
+              status: 'FAILED',
+              failedAt: new Date(),
+              errorMessage: message.slice(0, 500),
+            },
+          })
+          .catch(() => undefined);
+      }
+      yield { event: 'error', data: { run_id: run?.id ?? null, message } };
+    }
+  }
+
   // ----------------------------------------------
   // Internal helpers
   // ----------------------------------------------
@@ -296,33 +474,50 @@ export class RunsService {
     llmMessages: LlmMessage[],
   ): Promise<void> {
     for (const call of toolCalls) {
-      const attachment = agent.tools.find((at) => at.tool.name === call.name);
-      let resultContent: string;
+      await this.executeOneToolCall(threadId, runId, agent, call, llmMessages);
+    }
+  }
 
-      if (!attachment) {
-        resultContent = `Error: tool '${call.name}' is not registered for this agent`;
-        this.logger.warn(resultContent);
-      } else {
-        const result = await this.toolExecutor.execute(attachment.tool as never, call.arguments);
-        resultContent = result.content;
-      }
+  /**
+   * Executes a single tool call: runs it (or synthesises an error when
+   * the tool is not attached to the agent), persists the TOOL message,
+   * pushes it onto the running llmMessages, and returns the result
+   * content — so a streaming caller can emit it as an event.
+   */
+  private async executeOneToolCall(
+    threadId: string,
+    runId: string,
+    agent: AgentWithRelations,
+    call: LlmToolCall,
+    llmMessages: LlmMessage[],
+  ): Promise<string> {
+    const attachment = agent.tools.find((at) => at.tool.name === call.name);
+    let resultContent: string;
 
-      await this.prisma.message.create({
-        data: {
-          threadId,
-          runId,
-          role: 'TOOL',
-          content: resultContent,
-          toolCallId: call.id,
-          name: call.name,
-        },
-      });
-      llmMessages.push({
-        role: 'tool',
+    if (!attachment) {
+      resultContent = `Error: tool '${call.name}' is not registered for this agent`;
+      this.logger.warn(resultContent);
+    } else {
+      const result = await this.toolExecutor.execute(attachment.tool as never, call.arguments);
+      resultContent = result.content;
+    }
+
+    await this.prisma.message.create({
+      data: {
+        threadId,
+        runId,
+        role: 'TOOL',
         content: resultContent,
         toolCallId: call.id,
         name: call.name,
-      });
-    }
+      },
+    });
+    llmMessages.push({
+      role: 'tool',
+      content: resultContent,
+      toolCallId: call.id,
+      name: call.name,
+    });
+    return resultContent;
   }
 }
