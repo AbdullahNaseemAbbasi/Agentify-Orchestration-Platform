@@ -1,5 +1,5 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
-import { Message, Prisma, Run } from '@prisma/client';
+import { Message, Prisma, Run, Thread } from '@prisma/client';
 import { PrismaService } from '@agentify/database';
 import {
   LlmCompletionRequest,
@@ -31,7 +31,9 @@ interface AgentWithRelations {
   toolChoice: string;
   maxSteps: number;
   isActive: boolean;
-  tools: Array<{ tool: { id: string; name: string; description: string; parameters: Prisma.JsonValue } }>;
+  tools: Array<{
+    tool: { id: string; name: string; description: string; parameters: Prisma.JsonValue };
+  }>;
   knowledgeBases: Array<{ knowledgeBaseId: string; topK: number; minSimilarity: number }>;
 }
 
@@ -64,40 +66,7 @@ export class RunsService {
     threadId: string | undefined,
     userInput: string,
   ): Promise<ExecuteRunResult> {
-    const agent = (await this.prisma.agent.findFirst({
-      where: { id: agentId, workspaceId, deletedAt: null },
-      include: {
-        tools: { include: { tool: true } },
-        knowledgeBases: true,
-      },
-    })) as AgentWithRelations | null;
-    if (!agent) throw new NotFoundException('Agent not found');
-    if (!agent.isActive) throw new NotFoundException('Agent is disabled');
-
-    // Resolve or create the thread.
-    let thread = threadId
-      ? await this.prisma.thread.findFirst({ where: { id: threadId, workspaceId } })
-      : null;
-    if (threadId && !thread) throw new NotFoundException('Thread not found');
-    if (!thread) {
-      thread = await this.prisma.thread.create({
-        data: { workspaceId, agentId, title: userInput.slice(0, 80) },
-      });
-    } else if (thread.agentId !== agent.id) {
-      throw new NotFoundException('Thread does not belong to this agent');
-    }
-
-    const run = await this.prisma.run.create({
-      data: {
-        workspaceId,
-        agentId: agent.id,
-        threadId: thread.id,
-        status: 'IN_PROGRESS',
-        startedAt: new Date(),
-        model: agent.model,
-        provider: agent.provider,
-      },
-    });
+    const { agent, thread, run } = await this.prepareRun(workspaceId, agentId, threadId, userInput);
 
     try {
       // Save user message and load prior history (oldest first) AS llm messages.
@@ -138,8 +107,7 @@ export class RunsService {
           temperature: agent.temperature,
           maxTokens: agent.maxTokens,
           topP: agent.topP ?? undefined,
-          responseFormat:
-            (agent.responseFormat as Record<string, unknown> | null) ?? undefined,
+          responseFormat: (agent.responseFormat as Record<string, unknown> | null) ?? undefined,
         };
         const response = await this.llm.complete(agent.provider, req);
 
@@ -162,7 +130,13 @@ export class RunsService {
         llmMessages.push(response.message);
 
         if (response.finishReason === 'tool_calls' && response.message.toolCalls?.length) {
-          await this.runToolCalls(thread.id, run.id, agent, response.message.toolCalls, llmMessages);
+          await this.runToolCalls(
+            thread.id,
+            run.id,
+            agent,
+            response.message.toolCalls,
+            llmMessages,
+          );
           continue;
         }
 
@@ -209,6 +183,55 @@ export class RunsService {
   // ----------------------------------------------
   // Internal helpers
   // ----------------------------------------------
+
+  /**
+   * Shared setup for both the sync and streaming run paths: loads the
+   * agent with its relations, resolves (or creates) the thread, and
+   * opens a Run row in IN_PROGRESS. Throws 404 for an unknown agent,
+   * disabled agent, or a thread that belongs to a different agent.
+   */
+  private async prepareRun(
+    workspaceId: string,
+    agentId: string,
+    threadId: string | undefined,
+    userInput: string,
+  ): Promise<{ agent: AgentWithRelations; thread: Thread; run: Run }> {
+    const agent = (await this.prisma.agent.findFirst({
+      where: { id: agentId, workspaceId, deletedAt: null },
+      include: {
+        tools: { include: { tool: true } },
+        knowledgeBases: true,
+      },
+    })) as AgentWithRelations | null;
+    if (!agent) throw new NotFoundException('Agent not found');
+    if (!agent.isActive) throw new NotFoundException('Agent is disabled');
+
+    let thread = threadId
+      ? await this.prisma.thread.findFirst({ where: { id: threadId, workspaceId } })
+      : null;
+    if (threadId && !thread) throw new NotFoundException('Thread not found');
+    if (!thread) {
+      thread = await this.prisma.thread.create({
+        data: { workspaceId, agentId, title: userInput.slice(0, 80) },
+      });
+    } else if (thread.agentId !== agent.id) {
+      throw new NotFoundException('Thread does not belong to this agent');
+    }
+
+    const run = await this.prisma.run.create({
+      data: {
+        workspaceId,
+        agentId: agent.id,
+        threadId: thread.id,
+        status: 'IN_PROGRESS',
+        startedAt: new Date(),
+        model: agent.model,
+        provider: agent.provider,
+      },
+    });
+
+    return { agent, thread, run };
+  }
 
   private buildToolDefinitions(agent: AgentWithRelations): LlmToolDefinition[] {
     return agent.tools.map((at) => ({
