@@ -1,6 +1,11 @@
 import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { LlmCompletionRequest, LlmCompletionResponse, LlmProvider } from './llm.interface';
+import {
+  LlmCompletionRequest,
+  LlmCompletionResponse,
+  LlmProvider,
+  LlmStreamChunk,
+} from './llm.interface';
 import { AnthropicLlmProvider } from './providers/anthropic.provider';
 import { MockLlmProvider } from './providers/mock.provider';
 import { OpenAILlmProvider } from './providers/openai.provider';
@@ -26,10 +31,7 @@ export class LlmService {
     }
     const anthropicKey = this.config.get<string>('ANTHROPIC_API_KEY');
     if (anthropicKey) {
-      this.providers.set(
-        'anthropic',
-        new AnthropicLlmProvider({ apiKey: anthropicKey }),
-      );
+      this.providers.set('anthropic', new AnthropicLlmProvider({ apiKey: anthropicKey }));
       this.logger.log('Anthropic LLM provider registered');
     }
     if (this.providers.size === 0) {
@@ -51,12 +53,26 @@ export class LlmService {
   }
 
   async complete(providerKey: string, req: LlmCompletionRequest): Promise<LlmCompletionResponse> {
+    this.validate(req);
+    return this.providerFor(providerKey).complete(req);
+  }
+
+  /**
+   * Streaming variant of `complete`. Returns the provider's chunk
+   * iterable directly so the caller can `for await` over it and forward
+   * each delta to the client in real time.
+   */
+  completeStream(providerKey: string, req: LlmCompletionRequest): AsyncIterable<LlmStreamChunk> {
+    this.validate(req);
+    return this.providerFor(providerKey).completionStream(req);
+  }
+
+  private validate(req: LlmCompletionRequest): void {
     if (!req.model || req.model.length === 0) {
       throw new BadRequestException('model is required');
     }
     if (!Array.isArray(req.messages) || req.messages.length === 0) {
       throw new BadRequestException('messages must be a non-empty array');
     }
-    return this.providerFor(providerKey).complete(req);
   }
 }
