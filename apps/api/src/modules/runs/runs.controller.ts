@@ -63,10 +63,17 @@ export class RunsController {
     res.setHeader('X-Accel-Buffering', 'no');
     res.flushHeaders();
 
-    // Stop doing work the moment the client hangs up.
+    // If the client hangs up, ask the run to cancel itself. We do NOT
+    // break the loop — the run finishes its current step, sees the
+    // cancel flag, and marks itself CANCELLED cleanly. We just stop
+    // writing to the dead socket.
     let clientGone = false;
+    let runId: string | undefined;
     res.on('close', () => {
       clientGone = true;
+      if (runId) {
+        void this.runsService.requestCancel(ws.id, runId).catch(() => undefined);
+      }
     });
 
     try {
@@ -76,13 +83,32 @@ export class RunsController {
         dto.threadId,
         dto.input,
       )) {
-        if (clientGone) break;
-        res.write(`event: ${ev.event}\n`);
-        res.write(`data: ${JSON.stringify(ev.data)}\n\n`);
+        if (ev.event === 'run.created' && typeof ev.data.run_id === 'string') {
+          runId = ev.data.run_id;
+        }
+        if (!clientGone) {
+          res.write(`event: ${ev.event}\n`);
+          res.write(`data: ${JSON.stringify(ev.data)}\n\n`);
+        }
       }
     } finally {
-      res.end();
+      if (!clientGone) res.end();
     }
+  }
+
+  /**
+   * Request cancellation of an in-flight run. Idempotent — a no-op when
+   * the run has already reached a terminal state. The run flips to
+   * CANCELLED the next time its reasoning loop polls the flag.
+   */
+  @Post('runs/:id/cancel')
+  @HttpCode(HttpStatus.OK)
+  @Roles('OWNER', 'ADMIN', 'MEMBER')
+  cancel(
+    @CurrentWorkspace() ws: WorkspaceContext,
+    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
+  ): Promise<Run> {
+    return this.runsService.requestCancel(ws.id, id);
   }
 
   @Get('runs/:id')
