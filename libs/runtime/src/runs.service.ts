@@ -100,10 +100,8 @@ export class RunsService {
   }
 
   /**
-   * Run an agent on a (possibly new) thread with a single user input.
-   * Performs the full reasoning loop synchronously: optional RAG context
-   * injection, repeated LLM + tool calls up to agent.maxSteps, then
-   * persists every message and the run-level token totals.
+   * Run an agent synchronously: open the run, then drive the full
+   * reasoning loop to completion before returning.
    */
   async execute(
     workspaceId: string,
@@ -112,7 +110,82 @@ export class RunsService {
     userInput: string,
   ): Promise<ExecuteRunResult> {
     const { agent, thread, run } = await this.prepareRun(workspaceId, agentId, threadId, userInput);
+    return this.runReasoningLoop(agent, thread, run, userInput);
+  }
 
+  /**
+   * Create a Run in PENDING state for asynchronous execution. The agent
+   * and thread are validated now (so the caller still gets a fast 404),
+   * but the reasoning loop is deferred — a worker picks it up from the
+   * agent-run queue.
+   */
+  async createQueuedRun(
+    workspaceId: string,
+    agentId: string,
+    threadId: string | undefined,
+    userInput: string,
+  ): Promise<Run> {
+    const { agent, thread } = await this.resolveAgentAndThread(
+      workspaceId,
+      agentId,
+      threadId,
+      userInput,
+    );
+    return this.prisma.run.create({
+      data: {
+        workspaceId,
+        agentId: agent.id,
+        threadId: thread.id,
+        status: 'PENDING',
+        model: agent.model,
+        provider: agent.provider,
+      },
+    });
+  }
+
+  /**
+   * Execute a previously-queued run — called by the worker. Loads the
+   * agent + thread for the run, flips it to IN_PROGRESS and drives the
+   * reasoning loop. No-op when the run is missing or no longer PENDING
+   * (e.g. it was cancelled before being picked up).
+   */
+  async runQueued(runId: string, userInput: string): Promise<void> {
+    const run = await this.prisma.run.findUnique({ where: { id: runId } });
+    if (!run) {
+      this.logger.warn(`Queued run ${runId} not found — skipping`);
+      return;
+    }
+    if (run.status !== 'PENDING') {
+      this.logger.warn(`Queued run ${runId} is ${run.status}, not PENDING — skipping`);
+      return;
+    }
+
+    const agent = (await this.prisma.agent.findFirst({
+      where: { id: run.agentId },
+      include: { tools: { include: { tool: true } }, knowledgeBases: true },
+    })) as AgentWithRelations | null;
+    if (!agent) throw new Error(`Agent ${run.agentId} for run ${runId} no longer exists`);
+    const thread = await this.prisma.thread.findUniqueOrThrow({ where: { id: run.threadId } });
+
+    const started = await this.prisma.run.update({
+      where: { id: run.id },
+      data: { status: 'IN_PROGRESS', startedAt: new Date() },
+    });
+    await this.runReasoningLoop(agent, thread, started, userInput);
+  }
+
+  /**
+   * The reasoning loop itself: persist the user message, inject RAG
+   * context, then loop LLM + tool calls up to agent.maxSteps (polling
+   * the cancel flag each step), persisting every message and the
+   * run-level token totals. Shared by the sync and queued paths.
+   */
+  private async runReasoningLoop(
+    agent: AgentWithRelations,
+    thread: Thread,
+    run: Run,
+    userInput: string,
+  ): Promise<ExecuteRunResult> {
     try {
       // Save user message and load prior history (oldest first) AS llm messages.
       const userMsg = await this.prisma.message.create({
@@ -409,17 +482,16 @@ export class RunsService {
   // ----------------------------------------------
 
   /**
-   * Shared setup for both the sync and streaming run paths: loads the
-   * agent with its relations, resolves (or creates) the thread, and
-   * opens a Run row in IN_PROGRESS. Throws 404 for an unknown agent,
-   * disabled agent, or a thread that belongs to a different agent.
+   * Loads + validates the agent (404 if unknown or disabled) and
+   * resolves the thread, creating a fresh one when none was given
+   * (404 if the given thread is unknown or belongs to another agent).
    */
-  private async prepareRun(
+  private async resolveAgentAndThread(
     workspaceId: string,
     agentId: string,
     threadId: string | undefined,
     userInput: string,
-  ): Promise<{ agent: AgentWithRelations; thread: Thread; run: Run }> {
+  ): Promise<{ agent: AgentWithRelations; thread: Thread }> {
     const agent = (await this.prisma.agent.findFirst({
       where: { id: agentId, workspaceId, deletedAt: null },
       include: {
@@ -442,6 +514,25 @@ export class RunsService {
       throw new NotFoundException('Thread does not belong to this agent');
     }
 
+    return { agent, thread };
+  }
+
+  /**
+   * Shared setup for the sync + streaming run paths: resolve the agent
+   * and thread, then open a Run row in IN_PROGRESS.
+   */
+  private async prepareRun(
+    workspaceId: string,
+    agentId: string,
+    threadId: string | undefined,
+    userInput: string,
+  ): Promise<{ agent: AgentWithRelations; thread: Thread; run: Run }> {
+    const { agent, thread } = await this.resolveAgentAndThread(
+      workspaceId,
+      agentId,
+      threadId,
+      userInput,
+    );
     const run = await this.prisma.run.create({
       data: {
         workspaceId,
@@ -453,7 +544,6 @@ export class RunsService {
         provider: agent.provider,
       },
     });
-
     return { agent, thread, run };
   }
 
