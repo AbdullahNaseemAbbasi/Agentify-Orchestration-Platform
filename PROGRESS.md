@@ -6,7 +6,7 @@
 
 ## 📅 Last Updated
 
-**2026-05-20** — End of Session 17 (deep project re-analysis + SSRF security hardening)
+**2026-05-22** — End of Session 18 (Week 9 Phase 1 — SSE streaming live end-to-end)
 
 ---
 
@@ -23,7 +23,7 @@ Hum `AGENTIFY_SPEC.md` §22 ke 12-week roadmap follow kar rahe hain.
 | **Week 4**     | Agents & Tools                                       | ✅ **DONE** — schema migrated, Agents+Tools+attachments CRUD live and verified                                                                                                                 |
 | **Week 5–6**   | Knowledge Base & RAG                                 | ✅ **DONE** — full pipeline live: KB CRUD + documents + embeddings + worker + indexing + vector search verified end-to-end. Only multipart file upload deferred (text upload covers learning). |
 | **Week 7–8**   | Agent Runtime Engine                                 | ✅ **DONE** — All 4 phases live: libs/llm, Thread/Message/Run schema, RunsService reasoning loop, sync POST /agents/:id/runs endpoint verified end-to-end                                      |
-| **Week 9**     | Streaming & Async                                    | 🟡 **READY TO START** — needs SSE + BullMQ async runs                                                                                                                                          |
+| **Week 9**     | Streaming & Async                                    | 🟡 **IN PROGRESS** — SSE streaming DONE (provider streaming + executeStream + endpoint); BullMQ async runs + run cancellation still pending                                                    |
 | Week 10        | Memory System                                        | ⬜ Pending                                                                                                                                                                                     |
 | Week 11        | Observability & Webhooks                             | ⬜ Pending                                                                                                                                                                                     |
 | Week 12        | Polish & Deployment                                  | ⬜ Pending                                                                                                                                                                                     |
@@ -1126,37 +1126,116 @@ docs: add Session 16 + 17 logs, update resume point to Week 9
 
 ---
 
+## 📚 Session 18 Log (2026-05-22 — Week 9 Phase 1: SSE Streaming)
+
+### Kya Hua
+
+1. **Concept chapter** delivered: streaming kya hai, SSE (`text/event-stream`),
+   polling vs WebSocket vs SSE, trade-offs. Spec §15.
+
+2. **`libs/llm` — streaming poori tarah add hua (6 commits):**
+   - `LlmStreamChunk` type — provider chote `delta` chunks (live text)
+     deta hai, phir ek `done` chunk (assembled message + usage +
+     finishReason). Tool calls `done` par poore aate hain.
+   - `LlmProvider.completionStream()` — naya required interface method.
+   - **MockLlmProvider** — reply word-by-word, har word ke beech asli
+     60ms delay (keyless real-time effect).
+   - **`sse-stream.util.ts`** — shared SSE parser: network bytes buffer
+     karke har `data:` event yield karta hai (CRLF normalise).
+   - **OpenAILlmProvider** — `stream:true` + `stream_options.include_usage`;
+     text deltas live, tool-call fragments `index` se assemble.
+   - **AnthropicLlmProvider** — `/messages` stream events
+     (`message_start`, `content_block_delta` → `text_delta` /
+     `input_json_delta`, `message_delta`).
+   - **`LlmService.completeStream()`** — validation + provider delegate.
+
+3. **`RunsService` — streaming reasoning loop:**
+   - `prepareRun()` helper extract — agent load + thread + run create
+     (sync aur streaming dono reuse karte hain).
+   - `runToolCalls` → per-call `executeOneToolCall()` mein refactor.
+   - **`executeStream()`** — async generator: `run.created`,
+     per-token `message.delta`, `tool_call.started/completed`,
+     `message.completed`, `run.completed`. Failure → ek `error` event
+     (throw nahi, kyunki response stream ho chuki hoti hai).
+
+4. **`RunsController` — `POST /agents/:id/runs/stream`:**
+   - Manual SSE (`@Res()` library mode) — `text/event-stream` headers,
+     har event `event:`/`data:` lines, `X-Accel-Buffering: no`,
+     client-disconnect par loop break.
+
+5. **🎉 Real-time verified** — standalone script se MockLlmProvider
+   ke deltas: `+1ms, +69ms, +135ms, +195ms…` (~65ms apart). `done`
+   chunk assembled content + usage. Build dono apps green.
+   Full HTTP+DB curl test pending (Docker daemon down tha is session).
+
+### Concepts Locked This Session
+
+- ✅ SSE wire format (`event:` + `data:` + blank line)
+- ✅ Async generator (`async *`) as a streaming primitive
+- ✅ Streaming chunk model: deltas live, tool calls whole on done
+- ✅ OpenAI streaming tool-call fragment assembly (by index)
+- ✅ Anthropic streaming event types
+- ✅ Manual SSE via `@Res()` library mode (NestJS `@Sse()` GET-only)
+- ✅ Client-disconnect detection (`res.on('close')`)
+- ✅ DRY refactor — extract shared helper before second caller
+
+### Open Gaps (Week 9 remaining)
+
+- BullMQ async runs (`agent-run` queue + worker processor)
+- Run cancellation (`POST /runs/:id/cancel` + Redis cancel-key);
+  disconnect par run abhi `IN_PROGRESS` reh jaata hai — cancellation
+  step ise `CANCELLED` karega
+- Full HTTP curl test of `/runs/stream` (Docker chahiye)
+
+### Commits Made This Session (~9 atomic commits)
+
+```
+feat(llm): add LlmStreamChunk type and completionStream to provider interface
+feat(llm): implement streaming in MockLlmProvider
+feat(llm): add shared SSE stream parser
+feat(llm): implement streaming in OpenAILlmProvider
+feat(llm): implement streaming in AnthropicLlmProvider
+feat(llm): add LlmService.completeStream passthrough
+refactor(runs): extract prepareRun helper from execute
+feat(runs): add executeStream streaming reasoning loop
+feat(runs): add SSE streaming endpoint POST /agents/:id/runs/stream
+```
+
+---
+
+---
+
 ## 🎬 Next Session — Resume Point
 
-**Where we left off (end of Session 17):** Weeks 1–8 complete — auth, workspaces/RBAC, agents/tools, KB/RAG, aur sync agent runtime sab live. Session 17 mein deep re-analysis hua aur SSRF security hole fix kiya gaya. Ab roadmap ka agla padav = **Week 9 — Streaming & Async**.
+**Where we left off (end of Session 18):** Week 9 Phase 1 (SSE streaming) complete — `libs/llm` ke teeno providers streaming karte hain, `RunsService.executeStream()` live hai, aur `POST /agents/:id/runs/stream` endpoint chal raha hai. Real-time pacing standalone script se verify hua. **Bachay hue:** BullMQ async runs + run cancellation, aur ek full HTTP curl test.
 
-### Next concrete steps (Week 9 — Streaming & Async Runs)
+### Next concrete steps (Week 9 — remaining)
 
-Re-read **`AGENTIFY_SPEC.md` §15 (SSE)** and **§14 (BullMQ)** before starting.
+Re-read **`AGENTIFY_SPEC.md` §14 (BullMQ)** before starting.
 
-1. **SSE streaming endpoint:**
-   - `POST /v1/agents/:id/runs/stream` → `Content-Type: text/event-stream`
-   - `LlmProvider` ko `completionStream()` (AsyncIterable<chunk>) chahiye —
-     mock provider se shuru karo, phir OpenAI/Anthropic streaming
-   - Event types spec §15 se: `run.created`, `message.delta`, `tool.call`,
-     `run.completed`, `error`
+1. **Full HTTP test of streaming (pehle yeh — quick):**
+   - Docker up → migrate → `apps/api` start
+   - signup → agent create → `curl -N POST /agents/:id/runs/stream`
+   - deltas real-time aate dikhne chahiye, phir `run.completed`
 
 2. **Async runs via BullMQ:**
    - Naya `agent-run` queue (`libs/queue`)
-   - `POST /agents/:id/runs` ko async mode de — `Run` PENDING create karke
-     job enqueue, fauran `run_id` return
-   - `apps/worker` mein `AgentRunProcessor` — reasoning loop worker mein chale
-   - Client `GET /runs/:id` se status poll kare
+   - `POST /agents/:id/runs` ko async mode de (`?async=true` ya alag route) —
+     `Run` PENDING create karke job enqueue, fauran `run_id` return
+   - `apps/worker` mein `AgentRunProcessor` — `RunsService.execute()` worker
+     mein chale; client `GET /runs/:id` se status poll kare
 
 3. **Run cancellation:**
    - `POST /runs/:id/cancel` → Redis key `run:cancel:<runId>`
-   - Reasoning loop har LLM call se pehle key check kare → `CANCELLED`
+   - Reasoning loop (`execute` + `executeStream`) har LLM call se pehle key
+     check kare → `CANCELLED`
+   - SSE disconnect (`res.on('close')`) bhi run ko `CANCELLED` kare
 
 ### Suggested opening message for next session
 
-> "Weeks 1–8 done, SSRF fix bhi ho gaya. Aaj Week 9 — streaming. Pehle concept: SSE kya hai aur kyun (HTTP streaming vs WebSocket), phir `completionStream()` mock provider mein. Spec §15 padh lein. Ready?"
+> "Week 9 streaming done — provider streaming + executeStream + SSE endpoint live, real-time verify ho gaya. Aaj: pehle ek live curl test `/runs/stream` ka (Docker up karke), phir BullMQ async runs. Spec §14 padh lein. Ready?"
 
-### Quick wins (agar Week 9 se pehle warm-up chahiye)
+### Quick wins (warm-up ke liye)
 
 - HTTP tool response 1 MiB cap (`res.text()` unbounded — chhota, §12.2)
 - PROJECT.md §7 ka stale root-path + shell update
@@ -1183,11 +1262,11 @@ Re-read **`AGENTIFY_SPEC.md` §15 (SSE)** and **§14 (BullMQ)** before starting.
 ## 🔖 Commits So Far
 
 Target: 200+ atomic commits.
-Current: **~97 commits locally** (push status owned by Abdullah).
+Current: **~106 commits locally** (push status owned by Abdullah).
 
-S1-S15 totals + S16 (~3) + S17 (~3).
+S1-S15 totals + S16 (~3) + S17 (~3) + S18 (~9).
 
-Health: ~48% of the way to 200+ goal after 17 sessions. Weeks 1-8 fully done. On track for 12-week MVP — next is Week 9 (Streaming & Async).
+Health: ~53% of the way to 200+ goal after 18 sessions. Weeks 1-8 fully done; Week 9 Phase 1 (SSE streaming) done. On track for 12-week MVP.
 
 ---
 
