@@ -6,7 +6,7 @@
 
 ## 📅 Last Updated
 
-**2026-05-22** — End of Session 19 (Week 9 — run cancellation live; only BullMQ async runs left)
+**2026-05-22** — End of Session 20 (**WEEK 9 COMPLETE** — async runs live; runtime extracted to libs/runtime)
 
 ---
 
@@ -23,7 +23,7 @@ Hum `AGENTIFY_SPEC.md` §22 ke 12-week roadmap follow kar rahe hain.
 | **Week 4**     | Agents & Tools                                       | ✅ **DONE** — schema migrated, Agents+Tools+attachments CRUD live and verified                                                                                                                 |
 | **Week 5–6**   | Knowledge Base & RAG                                 | ✅ **DONE** — full pipeline live: KB CRUD + documents + embeddings + worker + indexing + vector search verified end-to-end. Only multipart file upload deferred (text upload covers learning). |
 | **Week 7–8**   | Agent Runtime Engine                                 | ✅ **DONE** — All 4 phases live: libs/llm, Thread/Message/Run schema, RunsService reasoning loop, sync POST /agents/:id/runs endpoint verified end-to-end                                      |
-| **Week 9**     | Streaming & Async                                    | 🟡 **IN PROGRESS** — SSE streaming + run cancellation DONE; only BullMQ async runs left (needs an architecture decision — see Resume Point)                                                    |
+| **Week 9**     | Streaming & Async                                    | ✅ **DONE** — SSE streaming + run cancellation + BullMQ async runs all live; runtime engine extracted to `libs/runtime` (shared by api + worker)                                               |
 | Week 10        | Memory System                                        | ⬜ Pending                                                                                                                                                                                     |
 | Week 11        | Observability & Webhooks                             | ⬜ Pending                                                                                                                                                                                     |
 | Week 12        | Polish & Deployment                                  | ⬜ Pending                                                                                                                                                                                     |
@@ -1268,41 +1268,107 @@ feat(runs): add POST /runs/:id/cancel and cancel-on-disconnect
 
 ---
 
+## 📚 Session 20 Log (2026-05-22 — Week 9 Phase 2: Async Runs, WEEK 9 COMPLETE)
+
+### Kya Hua
+
+1. **Architecture decision** — async run worker process mein chalti hai
+   par reasoning loop `apps/api` mein tha. Abdullah ne **Option A**
+   chuna: runtime ko shared lib mein nikalo.
+
+2. **`libs/runtime` — naya shared lib:**
+   - `RunsService`, `SearchService`, `HttpToolExecutor`, `url-safety.util`
+     `apps/api` se `libs/runtime` mein move (git mv — history safe).
+   - `RuntimeModule` — teeno services provide/export karta hai; deps
+     (Prisma/LLM/Embeddings/Redis) sab `@Global` se aate hain.
+   - `apps/api` ke runs / knowledge-bases / tools modules ab
+     `RuntimeModule` se wire — koi behaviour change nahi.
+
+3. **`RunsService` refactor (async ke liye):**
+   - `runReasoningLoop` + `resolveAgentAndThread` extract.
+   - `createQueuedRun()` — `Run` PENDING banata hai (agent/thread
+     validate, fast 404).
+   - `runQueued(runId, userInput)` — worker entry point: run load,
+     `IN_PROGRESS`, phir reasoning loop.
+
+4. **Async produce side (`apps/api`):**
+   - `CreateRunDto.async` flag.
+   - `AsyncRunsService` — `createQueuedRun` + BullMQ `agent-run` queue
+     par job enqueue. (Producer API mein hai taake `libs/runtime`
+     BullMQ se decouple rahe.)
+   - `POST /agents/:id/runs` ab `async:true` par turant PENDING run
+     return karta hai; warna sync (pehle jaisa).
+
+5. **Async consume side (`apps/worker`):**
+   - `AgentRunProcessor` — `agent-run` queue consume karke
+     `RunsService.runQueued()` chalata hai.
+   - `WorkerModule` ab `RuntimeModule` + Cache/LLM imports rakhta hai.
+
+6. **🎉 WEEK 9 COMPLETE** — streaming + cancellation + async runs sab
+   live. Build dono apps har step pe green.
+
+### Concepts Locked This Session
+
+- ✅ Shared lib se code dono apps (api + worker) reuse karna
+- ✅ Producer/consumer split — enqueue API mein, execute worker mein
+- ✅ Lib ko framework-coupling se bachana (BullMQ producer API mein
+  rakha, runtime lib clean)
+- ✅ `git mv` se files move karna (history preserve)
+- ✅ Async job pattern — PENDING row + job + poll (instant response)
+- ✅ Worker-side run reload (job mein sirf id, baqi DB se)
+
+### Open Gaps
+
+- Full HTTP curl test of sync + stream + cancel + async (Docker chahiye)
+- Worker concurrency tuning (spec §14 — agent-run concurrency 10)
+
+### Commits Made This Session (~12 atomic commits)
+
+```
+chore: scaffold libs/runtime package
+refactor: move agent runtime engine into libs/runtime
+feat(runtime): add RuntimeModule
+refactor(api): wire api modules to RuntimeModule
+feat(queue): add agent-run job type
+refactor(runtime): split run setup for async execution
+feat(runs): add async run mode via the agent-run queue
+feat(worker): add AgentRunProcessor for async runs
+```
+
+---
+
+---
+
 ## 🎬 Next Session — Resume Point
 
-**Where we left off (end of Session 19):** Week 9 ke 3 mein se 2 hisse done — SSE streaming + run cancellation dono live. Sirf **BullMQ async runs** baqi hai.
+**Where we left off (end of Session 20):** Weeks 1–9 mukammal. Agent runtime engine ab `libs/runtime` mein hai, api + worker dono use karte hain. Sync + streaming + async + cancellation — sab modes live. Roadmap ka agla padav = **Week 10 — Memory System**.
 
-### ⚠️ Architecture decision pending — async runs
+### Pehle: full HTTP test (test session — Abdullah ne end pe rakha hai)
 
-Async run worker process (`apps/worker`) mein chalegi, par poora reasoning
-loop (`RunsService.execute`) `apps/api` ke andar hai. Worker isay reuse
-kaise kare? 3 options:
+Docker up → migrate → `apps/api` + `apps/worker` dono start → curl se:
 
-- **A — runtime ko shared lib mein nikalo** (`libs/runtime`): saaf, dono
-  apps reuse karte hain. Sabse bada refactor (RunsService + SearchService
-  - HttpToolExecutor lib mein shift).
-- **B — `AgentRunProcessor` `apps/api` ke andar**: API hi `agent-run`
-  queue consume kare. Refactor zero, lekin "alag worker process" spec
-  §4 se halka deviation.
-- **C — loop worker mein duplicate karo**: jaldi, par DRY toot-ta hai
-  (DocumentProcessor wala pattern, magar loop bahut bada hai).
+- sync run, streaming run (`curl -N`), `POST /runs/:id/cancel`,
+  async run (`{"async":true}` → PENDING → poll `GET /runs/:id` → COMPLETED)
 
-Abdullah se poochhna hai shuru karne se pehle.
+### Next concrete steps (Week 10 — Memory System)
 
-### Next concrete steps (Week 9 — async runs, decision ke baad)
+Re-read **`AGENTIFY_SPEC.md` §13 (Memory)** before starting.
 
-Re-read **`AGENTIFY_SPEC.md` §14 (BullMQ)** before starting.
-
-1. `agent-run` queue + job type (`libs/queue`)
-2. API: async run enqueue — `Run` PENDING create, job enqueue, `run_id` return
-3. Chosen architecture ke mutabiq worker-side run executor
-4. Client `GET /runs/:id` se status poll
+1. `Memory` Prisma model + migration — `vector(1536)` embedding column,
+   workspace/agent/thread/user scoping, importance, expiresAt
+2. `MemoryService` — semantic store + retrieve (cosine search, jaisa
+   `SearchService` karta hai)
+3. Memory retrieval — run se pehle relevant memories system prompt mein
+   inject (RAG context ke saath)
+4. Memory extraction — run complete hone par optional LLM-based fact
+   extraction (`memory-extraction` queue)
+5. Memory CRUD endpoints (spec §9.8)
 
 ### Quick wins (warm-up ke liye)
 
-- Full HTTP curl test (Docker up): sync + stream + cancel teeno
 - HTTP tool response 1 MiB cap (`res.text()` unbounded — chhota, §12.2)
-- PROJECT.md §7 ka stale root-path + shell update
+- PROJECT.md §7 ka stale root-path + shell update (ab Windows/PowerShell)
+- API Keys module (spec §8.3 — abhi missing MVP feature)
 
 ### ⚠️ Reminders for Future Claude
 
@@ -1326,11 +1392,11 @@ Re-read **`AGENTIFY_SPEC.md` §14 (BullMQ)** before starting.
 ## 🔖 Commits So Far
 
 Target: 200+ atomic commits.
-Current: **~114 commits locally** (push status owned by Abdullah).
+Current: **~126 commits locally** (push status owned by Abdullah).
 
-S1-S15 totals + S16 (~3) + S17 (~3) + S18 (~9) + S19 (~8).
+S1-S15 totals + S16 (~3) + S17 (~3) + S18 (~9) + S19 (~8) + S20 (~12).
 
-Health: ~57% of the way to 200+ goal after 19 sessions. Weeks 1-8 fully done; Week 9 SSE streaming + run cancellation done, only async runs left. On track for 12-week MVP.
+Health: ~63% of the way to 200+ goal after 20 sessions. Weeks 1-9 fully done. On track for 12-week MVP — next is Week 10 (Memory System).
 
 ---
 
