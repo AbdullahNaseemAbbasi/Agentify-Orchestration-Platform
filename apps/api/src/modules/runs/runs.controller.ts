@@ -18,16 +18,22 @@ import { RolesGuard } from '../../common/guards/roles.guard';
 import { WorkspaceContext, WorkspaceGuard } from '../../common/guards/workspace.guard';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { ExecuteRunResult, RunsService } from '@agentify/runtime';
+import { AsyncRunsService, QueuedRunResult } from './async-runs.service';
 import { CreateRunDto } from './dto/create-run.dto';
 
 @Controller()
 @UseGuards(JwtAuthGuard, WorkspaceGuard, RolesGuard)
 export class RunsController {
-  constructor(private readonly runsService: RunsService) {}
+  constructor(
+    private readonly runsService: RunsService,
+    private readonly asyncRuns: AsyncRunsService,
+  ) {}
 
   /**
-   * Synchronous run: blocks until the reasoning loop returns a final
-   * message or hits maxSteps. Streaming + async runs land in Week 9.
+   * Run an agent. By default this is synchronous — it blocks until the
+   * reasoning loop returns a final message or hits maxSteps. With
+   * `async: true` the run is queued instead: a PENDING run is returned
+   * immediately and a worker executes it; poll `GET /runs/:id`.
    */
   @Post('agents/:agentId/runs')
   @HttpCode(HttpStatus.OK)
@@ -36,7 +42,10 @@ export class RunsController {
     @CurrentWorkspace() ws: WorkspaceContext,
     @Param('agentId', new ParseUUIDPipe({ version: '4' })) agentId: string,
     @Body() dto: CreateRunDto,
-  ): Promise<ExecuteRunResult> {
+  ): Promise<ExecuteRunResult | QueuedRunResult> {
+    if (dto.async) {
+      return this.asyncRuns.enqueue(ws.id, agentId, dto.threadId, dto.input);
+    }
     return this.runsService.execute(ws.id, agentId, dto.threadId, dto.input);
   }
 
