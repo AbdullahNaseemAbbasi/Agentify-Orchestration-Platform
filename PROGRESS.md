@@ -633,12 +633,12 @@ feat(workspaces): add CreateWorkspaceDto and UpdateWorkspaceDto
 
 ```
 fix(agents): move AttachToolDto into its own file
-fix(tools): use a narrow ToolShapeInput type for validateShape
+fix(tools): use a narrow ToolShapeInput type for validateShape 
 feat(agents): add agent-tool attachment endpoints
 feat(tools): add ToolsModule with workspace-scoped CRUD
-feat(agents): add AgentsModule with workspace-scoped CRUD
+feat(agents): add AgentsModule with workspace-scoped CRUD 
 feat(database): apply agents_and_tools migration
-feat(database): add Agent, Tool, AgentTool models + ToolType enum
+feat(database): add Agent, Tool, AgentTool models + ToolType enum 
 ```
 
 ---
