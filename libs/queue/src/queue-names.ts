@@ -7,6 +7,6 @@ export const QUEUE_NAMES = {
   AGENT_RUN: 'agent-run',
   WEBHOOK_DELIVERY: 'webhook-delivery',
   USAGE_AGGREGATION: 'usage-aggregation',
-} as const;
+} as const; 
 
 export type QueueName = (typeof QUEUE_NAMES)[keyof typeof QUEUE_NAMES];
